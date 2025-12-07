@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -21,6 +22,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,31 +41,27 @@ fun HistoryScreen(
     val selectedRecords by viewModel.selectedDateRecords.collectAsState()
     val currentViewingMonth by viewModel.currentViewingMonth.collectAsState()
     val allHabits by viewModel.habits.collectAsState()
-    // 【新增】获取所有标签，供弹窗选择
     val allTags by viewModel.allTags.collectAsState()
 
     val monthDays = remember(currentViewingMonth) { generateDaysForMonthHistory(currentViewingMonth) }
     val oneYearAgoStart = remember { getOneYearAgoStartHistory() }
 
-    // 弹窗状态
-    var showEditorDialog by remember { mutableStateOf(false) }
+    var showInputDialog by remember { mutableStateOf(false) }
     var editingHabit by remember { mutableStateOf<Habit?>(null) }
     var editingRecordValue by remember { mutableStateOf("") }
     var editingRecordTags by remember { mutableStateOf("") }
 
-    // 【核心修改】使用通用的 RecordEditorDialog (带标签功能)
-    if (showEditorDialog && editingHabit != null) {
+    if (showInputDialog && editingHabit != null) {
         RecordEditorDialog(
             initialNote = editingRecordValue,
             initialTags = editingRecordTags,
             allTags = allTags,
             habitType = editingHabit!!.type,
             targetValue = editingHabit!!.targetValue,
-            onDismiss = { showEditorDialog = false },
+            onDismiss = { showInputDialog = false },
             onConfirm = { note, tags ->
-                // 保存备注和标签
                 viewModel.updateRecord(editingHabit!!, selectedDate, isCompleted = null, note = note, tags = tags)
-                showEditorDialog = false
+                showInputDialog = false
             },
             onAddTag = { viewModel.addTag(it) },
             onDeleteTag = { viewModel.deleteTag(it) }
@@ -92,7 +90,6 @@ fun HistoryScreen(
             .padding(16.dp)
     ) {
         Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-            // 1. 年度热力图
             Text("年度回顾", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.Black)
             Spacer(modifier = Modifier.height(12.dp))
             Row(
@@ -112,7 +109,6 @@ fun HistoryScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // 2. 月度日历
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -138,7 +134,6 @@ fun HistoryScreen(
             Divider(color = Color(0xFFEEEEEE))
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 3. 历史修改列表
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("历史修改", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.Black)
                 Spacer(modifier = Modifier.width(8.dp))
@@ -160,8 +155,8 @@ fun HistoryScreen(
                 visibleHabits.forEach { habit ->
                     val record = recordMap[habit.id]
                     val isCompleted = record?.isCompleted == true
-                    val note = record?.value
-                    val tags = record?.tags
+                    val note = record?.value ?: ""
+                    val tags = record?.tags ?: ""
 
                     Row(
                         modifier = Modifier
@@ -171,21 +166,18 @@ fun HistoryScreen(
                             .combinedClickable(
                                 enabled = !isFutureDate,
                                 onClick = {
-                                    // 点击：切换打卡状态 (保留原有的备注和标签)
                                     viewModel.toggleHabit(habit, dateOverride = selectedDate)
                                 },
                                 onLongClick = {
-                                    // 长按：编辑备注和标签
                                     editingHabit = habit
-                                    editingRecordValue = note ?: ""
-                                    editingRecordTags = tags ?: ""
-                                    showEditorDialog = true
+                                    editingRecordValue = note
+                                    editingRecordTags = tags
+                                    showInputDialog = true
                                 }
                             )
                             .padding(vertical = 12.dp, horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // 打卡状态圆圈
                         Box(
                             modifier = Modifier
                                 .size(16.dp)
@@ -194,29 +186,56 @@ fun HistoryScreen(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
 
-                        // 习惯名称及备注标签
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            Text(
-                                text = habit.name,
-                                fontSize = 16.sp,
-                                color = if (isCompleted) Color.Black else Color.Gray
-                            )
-
-                            // 【核心修改】显示标签和备注
-                            val display = if(!tags.isNullOrEmpty()) "🏷️$tags ${note ?: ""}" else note
-                            if (!display.isNullOrEmpty()) {
-                                Spacer(modifier = Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            // 【修改】第一行：名称 + 备注
+                            Row(verticalAlignment = Alignment.Bottom) {
                                 Text(
-                                    text = display,
-                                    fontSize = 14.sp,
-                                    color = Color.Gray,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    text = habit.name,
+                                    fontSize = 18.sp, // 【字号加大】
+                                    color = if (isCompleted) Color.Black else Color.Gray,
+                                    fontWeight = FontWeight.Medium
                                 )
+
+                                if (note.isNotBlank()) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = note,
+                                        fontSize = 14.sp, // 【字号中等】
+                                        color = Color.Gray,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(bottom = 1.dp)
+                                    )
+                                }
+                            }
+
+                            // 【修改】第二行：标签 (蓝色小块)
+                            if (tags.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(
+                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    tags.split(",").forEach { tag ->
+                                        if (tag.isNotBlank()) {
+                                            Surface(
+                                                color = PrimaryBlue.copy(alpha = 0.1f),
+                                                shape = RoundedCornerShape(4.dp),
+                                            ) {
+                                                Text(
+                                                    text = tag,
+                                                    color = PrimaryBlue,
+                                                    fontSize = 10.sp, // 【字号较小】
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
 
-                        Spacer(modifier = Modifier.weight(1f))
+                        Spacer(modifier = Modifier.width(8.dp))
                         if (isCompleted) {
                             Text("已完成", fontSize = 12.sp, color = PrimaryBlue)
                         }
@@ -228,7 +247,7 @@ fun HistoryScreen(
     }
 }
 
-// --- 辅助函数 (保持不变) ---
+// --- 辅助函数 ---
 
 @Composable
 private fun MonthGridHistory(days: List<Long>, heatmapData: Map<Long, Int>, selectedDate: Long, onDateClick: (Long) -> Unit) {

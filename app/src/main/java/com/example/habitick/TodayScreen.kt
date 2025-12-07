@@ -3,8 +3,10 @@ package com.example.habitick
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
@@ -56,15 +58,12 @@ fun TodayScreen(
     }
 
     if (isSorting) {
-        // 【核心修改】排序模式：
-        // 1. 直接使用 viewModel.sortingList，不再在本地维护 list，解决不同步和报错问题
-        // 2. 添加 background(Color.White) 将底色设为白
         DraggableLazyColumn(
             items = viewModel.sortingList,
             onSwap = { from, to -> viewModel.onSortSwap(from, to) },
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.White) // 【需求实现】排序背景改为白色
+                .background(Color.White)
         ) { model, isDragging ->
             val habit = model.habit
             HabitItemRow(
@@ -78,7 +77,6 @@ fun TodayScreen(
             )
         }
     } else {
-        // 正常模式
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -124,26 +122,27 @@ fun HabitItemRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(72.dp)
-            // 无论是否拖拽，都保持白色背景，或者你可以给 isDragging 设置一个极淡的灰色以示区分
-            .background(if (isDragging) Color(0xFFFAFAFA) else Color.White)
+            .height(IntrinsicSize.Min)
+            .defaultMinSize(minHeight = 72.dp)
+            .background(Color.White)
             .combinedClickable(
                 enabled = !isSorting,
                 onClick = onHabitClick,
                 onLongClick = onLongClick
             )
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Column(
-            modifier = Modifier.weight(1f).fillMaxHeight(),
+            modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.Center
         ) {
+            // 【修改】第一行：名称 + 备注
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     text = habit.name,
-                    fontSize = 16.sp,
+                    fontSize = 18.sp, // 【字号加大】
                     color = if (habit.isCompleted && !isSorting) Color.Gray else habit.color,
                     textDecoration = if (habit.isCompleted && !isSorting) TextDecoration.LineThrough else null,
                     maxLines = 1,
@@ -151,24 +150,48 @@ fun HabitItemRow(
                     fontWeight = FontWeight.Medium
                 )
 
-                // 显示备注和标签
                 val note = model.todayNote ?: ""
-                val tags = model.todayTags ?: ""
-                val display = if(tags.isNotEmpty()) "🏷️$tags $note" else note
-
-                if (display.isNotBlank()) {
+                if (note.isNotBlank()) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = display,
-                        fontSize = 14.sp,
+                        text = note,
+                        fontSize = 14.sp, // 【字号中等】
                         color = Color.Gray,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(bottom = 1.dp) // 微调对齐
                     )
+                }
+            }
+
+            // 【修改】第二行：标签 (蓝色小块)
+            val tags = model.todayTags ?: ""
+            if (tags.isNotBlank()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    tags.split(",").forEach { tag ->
+                        if (tag.isNotBlank()) {
+                            Surface(
+                                color = PrimaryBlue.copy(alpha = 0.1f),
+                                shape = RoundedCornerShape(4.dp),
+                            ) {
+                                Text(
+                                    text = tag,
+                                    color = PrimaryBlue,
+                                    fontSize = 10.sp, // 【字号较小】
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
 
+        // 右侧操作区 (保持不变)
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (!isSorting && model.currentStreak >= 2) {
                 StreakTag(streak = model.currentStreak)
