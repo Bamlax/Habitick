@@ -29,24 +29,7 @@ fun TodayScreen(
     onHabitClick: (Habit) -> Unit
 ) {
     val isSorting by viewModel.isSorting.collectAsState()
-    val sortingList = remember { mutableStateListOf<HabitUiModel>() }
-    // 【新增】获取所有标签
     val allTags by viewModel.allTags.collectAsState()
-
-    LaunchedEffect(isSorting, habitModels) {
-        if (isSorting) {
-            if (sortingList.isEmpty() || sortingList.size != habitModels.size) {
-                sortingList.clear()
-                sortingList.addAll(habitModels)
-            }
-        } else {
-            if (sortingList.isNotEmpty()) {
-                val habitsToSave = sortingList.map { it.habit }
-                viewModel.saveSortOrder(habitsToSave)
-                sortingList.clear()
-            }
-        }
-    }
 
     // 弹窗状态
     var showEditorDialog by remember { mutableStateOf(false) }
@@ -54,7 +37,7 @@ fun TodayScreen(
     var currentNoteForDialog by remember { mutableStateOf("") }
     var currentTagsForDialog by remember { mutableStateOf("") }
 
-    // 【修改】调用通用的 RecordEditorDialog
+    // 通用记录编辑器
     if (showEditorDialog && currentHabitForDialog != null) {
         RecordEditorDialog(
             initialNote = currentNoteForDialog,
@@ -73,9 +56,15 @@ fun TodayScreen(
     }
 
     if (isSorting) {
+        // 【核心修改】排序模式：
+        // 1. 直接使用 viewModel.sortingList，不再在本地维护 list，解决不同步和报错问题
+        // 2. 添加 background(Color.White) 将底色设为白
         DraggableLazyColumn(
-            items = sortingList,
-            onSwap = { from, to -> viewModel.onSortSwap(from, to) }
+            items = viewModel.sortingList,
+            onSwap = { from, to -> viewModel.onSortSwap(from, to) },
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.White) // 【需求实现】排序背景改为白色
         ) { model, isDragging ->
             val habit = model.habit
             HabitItemRow(
@@ -89,8 +78,11 @@ fun TodayScreen(
             )
         }
     } else {
+        // 正常模式
         LazyColumn(
-            modifier = Modifier.fillMaxSize().background(Color.White),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.White),
             contentPadding = PaddingValues(0.dp)
         ) {
             items(habitModels.size) { index ->
@@ -133,7 +125,8 @@ fun HabitItemRow(
         modifier = Modifier
             .fillMaxWidth()
             .height(72.dp)
-            .background(Color.White)
+            // 无论是否拖拽，都保持白色背景，或者你可以给 isDragging 设置一个极淡的灰色以示区分
+            .background(if (isDragging) Color(0xFFFAFAFA) else Color.White)
             .combinedClickable(
                 enabled = !isSorting,
                 onClick = onHabitClick,
