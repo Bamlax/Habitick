@@ -54,7 +54,7 @@ import java.util.regex.Pattern
 import kotlin.math.abs
 
 // ============================================================================================
-// 1. 核心定义 & 基础组件 (全部移到最前，防止 Unresolved Reference)
+// 1. 核心定义
 // ============================================================================================
 
 enum class ChartPeriod { Week, Month, Quarter, Year }
@@ -78,59 +78,8 @@ data class StreakInfo(
     val days: Int
 )
 
-// 【核心修复】StatItem 放在这里，确保后续组件能找到
-@Composable
-fun StatItem(modifier: Modifier, label: String, value: String) {
-    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, fontSize = 12.sp, color = Color.Gray)
-        Spacer(Modifier.height(4.dp))
-        Text(value, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.Black, textAlign = TextAlign.Center, maxLines = 1)
-    }
-}
-
-// 【核心修复】PeriodSelector 放在这里
-@Composable
-fun PeriodSelector(selected: ChartPeriod, onSelect: (ChartPeriod) -> Unit) {
-    Row(modifier = Modifier.background(Color(0xFFEEEEEE), RoundedCornerShape(8.dp)).padding(2.dp)) {
-        ChartPeriod.values().forEach { period ->
-            val isSelected = selected == period
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(if (isSelected) Color.White else Color.Transparent)
-                    .clickable { onSelect(period) }
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = when(period){
-                        ChartPeriod.Week -> "周"
-                        ChartPeriod.Month -> "月"
-                        ChartPeriod.Quarter -> "季"
-                        ChartPeriod.Year -> "年"
-                    },
-                    fontSize = 12.sp,
-                    color = if (isSelected) PrimaryBlue else Color.Gray,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun ChartSectionContainer(title: String, action: @Composable (() -> Unit)? = null, content: @Composable () -> Unit) {
-    Column(modifier = Modifier.background(Color.White).padding(16.dp).fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            action?.invoke()
-        }
-        Spacer(Modifier.height(16.dp))
-        content()
-    }
-}
-
 // ============================================================================================
-// 2. 辅助函数 (时间 & 数据处理)
+// 2. 辅助函数 (全部置顶，单一定义)
 // ============================================================================================
 
 private fun getStartOfDayDetail(timestamp: Long): Long {
@@ -214,7 +163,34 @@ private fun parseFrequencyDetail(freqStr: String): Set<Int> {
     }
 }
 
-// --- 业务逻辑 ---
+// 弹窗辅助函数 (只保留这一个定义)
+private fun showDatePickerDetail(context: Context, initialDate: Long, onDateSelected: (Long) -> Unit) {
+    val calendar = Calendar.getInstance()
+    calendar.timeInMillis = initialDate
+    android.app.DatePickerDialog(
+        context,
+        { _, year, month, dayOfMonth ->
+            calendar.set(year, month, dayOfMonth, 0, 0, 0)
+            onDateSelected(calendar.timeInMillis)
+        },
+        calendar.get(Calendar.YEAR),
+        calendar.get(Calendar.MONTH),
+        calendar.get(Calendar.DAY_OF_MONTH)
+    ).show()
+}
+
+private fun isSameMonthDetail(d1: Long, d2: Long): Boolean {
+    val c1 = Calendar.getInstance().apply { timeInMillis = d1 }
+    val c2 = Calendar.getInstance().apply { timeInMillis = d2 }
+    return c1.get(Calendar.YEAR) == c2.get(Calendar.YEAR) && c1.get(Calendar.MONTH) == c2.get(Calendar.MONTH)
+}
+
+private fun getDayStrDetail(ts: Long): String {
+    val c = Calendar.getInstance().apply { timeInMillis = ts }
+    return c.get(Calendar.DAY_OF_MONTH).toString()
+}
+
+// --- 统计逻辑 ---
 
 private fun processRecordsDetail(input: List<HabitRecord>): List<HabitRecord> {
     return input.sortedBy { it.date }.distinctBy { it.date }
@@ -357,18 +333,492 @@ private fun generateCheckInStatsDetail(records: List<HabitRecord>, period: Chart
     return result
 }
 
-private fun isSameMonthDetail(d1: Long, d2: Long): Boolean {
-    val c1 = Calendar.getInstance().apply { timeInMillis = d1 }
-    val c2 = Calendar.getInstance().apply { timeInMillis = d2 }
-    return c1.get(Calendar.YEAR) == c2.get(Calendar.YEAR) && c1.get(Calendar.MONTH) == c2.get(Calendar.MONTH)
+// ============================================================================================
+// 3. 所有 UI 组件 (置顶定义)
+// ============================================================================================
+
+@Composable
+fun StatItem(modifier: Modifier, label: String, value: String) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, fontSize = 12.sp, color = Color.Gray)
+        Spacer(Modifier.height(4.dp))
+        Text(value, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.Black, textAlign = TextAlign.Center, maxLines = 1)
+    }
 }
 
-private fun getDayStrDetail(ts: Long): String {
-    val c = Calendar.getInstance().apply { timeInMillis = ts }
-    return c.get(Calendar.DAY_OF_MONTH).toString()
+@Composable
+fun PeriodSelector(selected: ChartPeriod, onSelect: (ChartPeriod) -> Unit) {
+    Row(modifier = Modifier.background(Color(0xFFEEEEEE), RoundedCornerShape(8.dp)).padding(2.dp)) {
+        ChartPeriod.values().forEach { period ->
+            val isSelected = selected == period
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(if (isSelected) Color.White else Color.Transparent)
+                    .clickable { onSelect(period) }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = when(period){
+                        ChartPeriod.Week -> "周"
+                        ChartPeriod.Month -> "月"
+                        ChartPeriod.Quarter -> "季"
+                        ChartPeriod.Year -> "年"
+                    },
+                    fontSize = 12.sp,
+                    color = if (isSelected) PrimaryBlue else Color.Gray,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                )
+            }
+        }
+    }
 }
 
-// ==================== 3. 主界面函数 ====================
+@Composable
+fun ChartSectionContainer(title: String, action: @Composable (() -> Unit)? = null, content: @Composable () -> Unit) {
+    Column(modifier = Modifier.background(Color.White).padding(16.dp).fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            action?.invoke()
+        }
+        Spacer(Modifier.height(16.dp))
+        content()
+    }
+}
+
+@Composable
+fun CheckInBarChart(records: List<HabitRecord>, period: ChartPeriod, graphColor: Color) {
+    val dataPoints = remember(records, period) { generateCheckInStatsDetail(records, period) }
+    if (dataPoints.isEmpty()) { Box(Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) { Text("暂无打卡数据", color = Color.LightGray) }; return }
+    val maxValue = dataPoints.maxOf { it.second }.coerceAtLeast(1)
+    Row(modifier = Modifier.fillMaxWidth().height(160.dp)) {
+        Column(modifier = Modifier.width(30.dp).fillMaxHeight().padding(bottom = 20.dp), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.End) {
+            Text("$maxValue", fontSize = 10.sp, color = Color.Gray)
+            Text("${maxValue/2}", fontSize = 10.sp, color = Color.Gray)
+            Text("0", fontSize = 10.sp, color = Color.Gray)
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        Canvas(modifier = Modifier.weight(1f).fillMaxHeight()) {
+            val barWidth = size.width / (dataPoints.size * 1.5f)
+            val stepX = size.width / dataPoints.size
+            val chartHeight = size.height - 40f
+            drawLine(Color(0xFFEEEEEE), Offset(0f, 0f), Offset(size.width, 0f))
+            drawLine(Color(0xFFEEEEEE), Offset(0f, chartHeight), Offset(size.width, chartHeight))
+            dataPoints.forEachIndexed { index, (label, count) ->
+                val barHeight = (count.toFloat() / maxValue) * chartHeight
+                val x = index * stepX + (stepX - barWidth) / 2
+                val y = chartHeight - barHeight
+                drawRect(color = graphColor, topLeft = Offset(x, y), size = Size(barWidth, barHeight))
+                if (dataPoints.size < 15 || index % (dataPoints.size/5) == 0) {
+                    drawContext.canvas.nativeCanvas.apply { val paint = android.graphics.Paint().apply { this.color = android.graphics.Color.GRAY; textSize = 24f; textAlign = android.graphics.Paint.Align.CENTER }; drawText(label, x + barWidth/2, size.height - 10f, paint) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ValueLineChartV2(records: List<HabitRecord>, graphColor: Color, habitType: HabitType) {
+    var selectedIndex by remember { mutableStateOf(-1) }
+    val dataPoints = remember(records, habitType) {
+        records.mapNotNull { record ->
+            val value = extractValueDetail(record.value, habitType)
+            if (value != null && value > 0) Pair(record.date, value) else null
+        }.sortedBy { it.first }.takeLast(15)
+    }
+
+    if (dataPoints.isEmpty()) {
+        Box(Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
+            Text("暂无数值记录", color = Color.LightGray)
+        }
+        return
+    }
+
+    val yValues = dataPoints.map { it.second }
+    val maxY = yValues.maxOrNull() ?: 10f
+    val minY = yValues.minOrNull() ?: 0f
+    val yRange = (maxY - minY).coerceAtLeast(1f)
+
+    Row(modifier = Modifier.fillMaxWidth().height(180.dp)) {
+        Column(modifier = Modifier.width(40.dp).fillMaxHeight().padding(vertical = 10.dp), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.End) {
+            Text(formatYLabel(maxY, habitType), fontSize = 10.sp, color = Color.Gray)
+            Text(formatYLabel((maxY+minY)/2, habitType), fontSize = 10.sp, color = Color.Gray)
+            Text(formatYLabel(minY, habitType), fontSize = 10.sp, color = Color.Gray)
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Canvas(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = { offset ->
+                            val w = size.width
+                            if (dataPoints.size > 1) {
+                                val stepX = w / (dataPoints.size - 1)
+                                val index = (offset.x / stepX).let { Math.round(it).toInt() }
+                                if (index in dataPoints.indices) {
+                                    val pointX = index * stepX
+                                    if (abs(pointX - offset.x) < 40f) {
+                                        selectedIndex = index
+                                    } else {
+                                        selectedIndex = -1
+                                    }
+                                }
+                            } else {
+                                selectedIndex = if (dataPoints.isNotEmpty()) 0 else -1
+                            }
+                        }
+                    )
+                }
+        ) {
+            val w = size.width; val h = size.height; val paddingBottom = 40f
+            drawLine(Color(0xFFEEEEEE), Offset(0f, 0f), Offset(w, 0f))
+            drawLine(Color(0xFFEEEEEE), Offset(0f, (h-paddingBottom)/2), Offset(w, (h-paddingBottom)/2))
+            drawLine(Color(0xFFEEEEEE), Offset(0f, h-paddingBottom), Offset(w, h-paddingBottom))
+
+            if (dataPoints.size == 1) {
+                val cx = w / 2; val cy = (h - paddingBottom) / 2
+                drawCircle(color = graphColor, radius = 4.dp.toPx(), center = Offset(cx, cy))
+                drawContext.canvas.nativeCanvas.apply { val paint = android.graphics.Paint().apply { color = android.graphics.Color.GRAY; textSize = 24f; textAlign = android.graphics.Paint.Align.CENTER }; drawText(formatDateShortMMDDDetail(dataPoints[0].first), cx, h, paint) }
+            } else {
+                val path = Path()
+                dataPoints.forEachIndexed { index, (timestamp, value) ->
+                    val x = index * (w / (dataPoints.size - 1))
+                    val yRatio = (value - minY) / yRange
+                    val y = (h - paddingBottom) - (yRatio * (h - paddingBottom) * 0.8f) - ((h - paddingBottom) * 0.1f)
+
+                    if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    drawCircle(color = graphColor, radius = 3.dp.toPx(), center = Offset(x, y))
+
+                    val shouldDrawLabel = when { dataPoints.size <= 5 -> true; index == 0 || index == dataPoints.size - 1 -> true; index % (dataPoints.size / 3) == 0 -> true; else -> false }
+                    if (shouldDrawLabel) { drawContext.canvas.nativeCanvas.apply { val paint = android.graphics.Paint().apply { color = android.graphics.Color.GRAY; textSize = 24f; textAlign = android.graphics.Paint.Align.CENTER }; drawText(formatDateShortMMDDDetail(timestamp), x, h - 10f, paint) } }
+
+                    if (index == selectedIndex) {
+                        drawCircle(graphColor.copy(alpha=0.2f), radius=8.dp.toPx(), center=Offset(x, y))
+                        drawCircle(graphColor, radius=4.dp.toPx(), center=Offset(x, y))
+                        val text = formatYLabel(value, habitType)
+                        drawContext.canvas.nativeCanvas.apply { val paint = android.graphics.Paint().apply { color = android.graphics.Color.BLACK; textSize = 30f; textAlign = android.graphics.Paint.Align.CENTER; isFakeBoldText = true }; drawText(text, x, y - 20f, paint) } }
+                }
+                drawPath(path, color = graphColor, style = Stroke(width = 2.dp.toPx()))
+            }
+        }
+    }
+}
+
+@Composable
+fun TagPieChart(records: List<HabitRecord>) {
+    val tagCounts = remember(records) {
+        val map = mutableMapOf<String, Int>()
+        records.forEach { record ->
+            if (record.tags.isNotBlank()) {
+                record.tags.split(",").forEach { tag ->
+                    if (tag.isNotBlank()) {
+                        map[tag] = map.getOrDefault(tag, 0) + 1
+                    }
+                }
+            }
+        }
+        map
+    }
+
+    if (tagCounts.isEmpty()) return
+
+    val total = tagCounts.values.sum()
+    val tags = tagCounts.keys.toList()
+    val counts = tagCounts.values.toList()
+
+    val colors = remember(tags) {
+        List(tags.size) { index ->
+            val alpha = 1.0f - (index * 0.8f / tags.size.coerceAtLeast(1))
+            PrimaryBlue.copy(alpha = alpha.coerceAtLeast(0.2f))
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White)
+            .padding(16.dp)
+    ) {
+        Text("标签分布", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth().height(150.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier.weight(1f).aspectRatio(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    var startAngle = -90f
+                    counts.forEachIndexed { index, count ->
+                        val sweepAngle = (count.toFloat() / total) * 360f
+                        drawArc(
+                            color = colors[index],
+                            startAngle = startAngle,
+                            sweepAngle = sweepAngle,
+                            useCenter = true
+                        )
+                        startAngle += sweepAngle
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.width(24.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                tags.forEachIndexed { index, tag ->
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
+                        Box(modifier = Modifier.size(12.dp).background(colors[index], CircleShape))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("$tag (${counts[index]})", fontSize = 12.sp, color = Color.Gray)
+                    }
+                }
+            }
+        }
+    }
+    Spacer(modifier = Modifier.height(16.dp))
+}
+
+@Composable
+fun DayEditorSection(
+    selectedDate: Long,
+    habit: Habit,
+    records: List<HabitRecord>,
+    allTags: List<Tag>,
+    viewModel: HabitViewModel
+) {
+    val currentRecord = records.find { it.date == selectedDate }
+    val isCompleted = currentRecord?.isCompleted ?: false
+    val currentNote = currentRecord?.value ?: ""
+    val currentTags = currentRecord?.tags ?: ""
+
+    val today = getTodayZeroDetail()
+    val startDate = getStartOfDayDetail(habit.startDate)
+    val isValidDate = selectedDate >= startDate && selectedDate <= today
+
+    var showEditorDialog by remember { mutableStateOf(false) }
+
+    if (showEditorDialog) {
+        RecordEditorDialog(
+            initialNote = currentNote,
+            initialTags = currentTags,
+            allTags = allTags,
+            habitType = habit.type,
+            targetValue = habit.targetValue,
+            onDismiss = { showEditorDialog = false },
+            onConfirm = { note, tags ->
+                viewModel.updateRecord(habit, selectedDate, isCompleted = null, note = note, tags = tags)
+                showEditorDialog = false
+            },
+            onAddTag = { viewModel.addTag(it) },
+            onDeleteTag = { viewModel.deleteTag(it) }
+        )
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 16.dp, vertical = 12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = isCompleted,
+                enabled = isValidDate,
+                onCheckedChange = { checked ->
+                    viewModel.updateRecord(habit, selectedDate, isCompleted = checked, note = null, tags = null)
+                },
+                colors = CheckboxDefaults.colors(checkedColor = PrimaryBlue)
+            )
+            Spacer(Modifier.width(8.dp))
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(42.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0xFFF5F5F5))
+                    .clickable(enabled = isValidDate) { showEditorDialog = true }
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                if (!isValidDate) {
+                    Text("无法在此时段记录", color = Color.LightGray, fontSize = 14.sp)
+                } else {
+                    if (currentNote.isEmpty() && currentTags.isEmpty()) {
+                        Text("添加备注或标签...", color = Color.Gray, fontSize = 14.sp)
+                    } else {
+                        val display = if(currentTags.isNotEmpty()) "🏷️$currentTags $currentNote" else currentNote
+                        Text(display, color = Color.Black, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StreakListSection(streaks: List<StreakInfo>) {
+    if (streaks.isEmpty()) return
+
+    val bestStreak = streaks.sortedWith(
+        compareByDescending<StreakInfo> { it.days }
+            .thenBy { it.startDate }
+    ).firstOrNull() ?: return
+
+    val otherStreaks = streaks.sortedByDescending { it.startDate }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White)
+            .padding(16.dp)
+    ) {
+        Text("最佳连续完成次数", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.Black)
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                otherStreaks.forEachIndexed { index, streak ->
+                    val isBest = (streak == bestStreak)
+
+                    val bgColor = if (isBest) PrimaryBlue else Color(0xFFEEEEEE)
+                    val contentColor = if (isBest) Color.White else Color.Gray
+                    val dateColor = if (isBest) Color.Black else Color.LightGray
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(formatDateCN(streak.startDate), color = dateColor, fontSize = 12.sp)
+                        Spacer(Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .width(if (isBest) 60.dp else 40.dp)
+                                .height(if (isBest) 30.dp else 24.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(bgColor),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "${streak.days}",
+                                color = contentColor,
+                                fontWeight = if (isBest) FontWeight.Bold else FontWeight.Normal,
+                                fontSize = 12.sp
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Text(formatDateCN(streak.endDate), color = dateColor, fontSize = 12.sp)
+                    }
+                    if (index < otherStreaks.size - 1) {
+                        Box(modifier = Modifier.width(2.dp).height(16.dp).background(Color(0xFFEEEEEE)))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StatsGridSection(habit: Habit, stats: HabitStats) {
+    Column(modifier = Modifier.background(Color.White).padding(16.dp)) {
+        Row(Modifier.fillMaxWidth()) {
+            StatItem(Modifier.weight(1f), "开始时间", formatDateShortDetail(habit.startDate))
+            StatItem(Modifier.weight(1f), "重复", formatFrequencyDetail(habit.frequency))
+            StatItem(Modifier.weight(1f), "结束时间", if (habit.endDate != null) formatDateShortDetail(habit.endDate) else "-")
+        }
+        Spacer(Modifier.height(16.dp))
+        Row(Modifier.fillMaxWidth()) {
+            StatItem(Modifier.weight(1f), "类型", getTypeNameDetail(habit.type))
+            StatItem(Modifier.weight(1f), "目标", habit.targetValue ?: "-")
+            StatItem(Modifier.weight(1f), "已开始", "${stats.daysSinceStart}天")
+        }
+        Spacer(Modifier.height(16.dp))
+        Row(Modifier.fillMaxWidth()) {
+            StatItem(Modifier.weight(1f), "打卡", "${stats.totalCheckIns}天/${stats.checkInRate}%")
+            if (habit.type != HabitType.Normal) {
+                StatItem(Modifier.weight(1f), "平均", stats.avgValue)
+                StatItem(Modifier.weight(1f), "总共", stats.totalValue)
+            } else {
+                Spacer(Modifier.weight(2f))
+            }
+        }
+        if (habit.type != HabitType.Normal) {
+            Spacer(Modifier.height(16.dp))
+            Row(Modifier.fillMaxWidth()) {
+                StatItem(Modifier.weight(1f), "最小", stats.minValue)
+                StatItem(Modifier.weight(1f), "最大", stats.maxValue)
+                Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditHabitDialog(
+    habit: Habit,
+    onDismiss: () -> Unit,
+    onSave: (Habit) -> Unit
+) {
+    val context = LocalContext.current
+    var name by remember { mutableStateOf(habit.name) }
+    var selectedColor by remember { mutableStateOf(habit.color) }
+    var selectedType by remember { mutableStateOf(habit.type) }
+    var startDate by remember { mutableStateOf(habit.startDate) }
+    var endDate by remember { mutableStateOf(habit.endDate) }
+    var frequency by remember { mutableStateOf(parseFrequencyDetail(habit.frequency)) }
+    var targetValue by remember { mutableStateOf(habit.targetValue ?: "") }
+
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Scaffold(
+            containerColor = Color.White,
+            topBar = {
+                TopAppBar(
+                    title = { Text("修改习惯", color = Color.White) },
+                    navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.Filled.ArrowBack, "返回", tint = Color.White) } },
+                    actions = {
+                        TextButton(onClick = {
+                            if (name.isBlank()) {
+                                Toast.makeText(context, "请输入习惯名称", Toast.LENGTH_SHORT).show()
+                            } else {
+                                val updatedHabit = habit.copy(
+                                    name = name,
+                                    colorValue = selectedColor.value.toLong(),
+                                    type = selectedType,
+                                    startDate = startDate,
+                                    endDate = endDate,
+                                    frequency = frequency.joinToString(","),
+                                    targetValue = if (selectedType == HabitType.Normal) null else targetValue
+                                )
+                                onSave(updatedHabit)
+                            }
+                        }) { Text("保存", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White) }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = PrimaryBlue)
+                )
+            }
+        ) { innerPadding ->
+            Column(modifier = Modifier.padding(innerPadding).padding(16.dp).verticalScroll(rememberScrollState())) {
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("习惯名称") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                Spacer(modifier = Modifier.height(24.dp)); Text("标记颜色", style = MaterialTheme.typography.titleSmall); Spacer(modifier = Modifier.height(8.dp)); EditColorSelector(selectedColor) { selectedColor = it }
+                Spacer(modifier = Modifier.height(24.dp)); Text("任务类型", style = MaterialTheme.typography.titleSmall); Spacer(modifier = Modifier.height(8.dp)); EditTypeSelector(selectedType) { selectedType = it }
+                if (selectedType != HabitType.Normal) { Spacer(modifier = Modifier.height(16.dp)); OutlinedTextField(value = targetValue, onValueChange = { targetValue = it }, label = { Text(when(selectedType) { HabitType.Numeric -> "目标数值 (如: 50)"; HabitType.Timer -> "目标时长 (如: 30分钟)"; HabitType.TimePoint -> "目标时刻 (如: 08:00)"; else -> "" }) }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
+                Spacer(modifier = Modifier.height(24.dp)); Text("重复时间", style = MaterialTheme.typography.titleSmall); Spacer(modifier = Modifier.height(8.dp)); EditFrequencySelector(frequency) { newSet -> frequency = newSet }
+                Spacer(modifier = Modifier.height(24.dp)); Text("有效日期", style = MaterialTheme.typography.titleSmall); Spacer(modifier = Modifier.height(8.dp)); EditDateRow("开始时间", startDate) { newDate -> if (newDate != null) startDate = newDate }; Spacer(modifier = Modifier.height(12.dp)); EditDateRow("结束时间", endDate, isNullable = true) { newDate -> endDate = newDate }
+            }
+        }
+    }
+}
+
+@Composable private fun EditColorSelector(selected: Color, onSelect: (Color) -> Unit) { val colors = listOf(Color(0xFF9C27B0), Color(0xFF03A9F4), Color(0xFF424242), Color(0xFFFF5722), Color(0xFF009688), Color(0xFFE91E63)); Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) { colors.forEach { color -> Box(modifier = Modifier.size(36.dp).clip(CircleShape).background(color).border(width = if (color == selected) 3.dp else 0.dp, color = Color.LightGray, shape = CircleShape).clickable { onSelect(color) }) } } }
+@OptIn(ExperimentalMaterial3Api::class) @Composable private fun EditTypeSelector(selected: HabitType, onSelect: (HabitType) -> Unit) { val types = listOf(HabitType.Normal to "普通", HabitType.Numeric to "数值", HabitType.Timer to "计时", HabitType.TimePoint to "时刻"); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { types.forEach { (type, label) -> FilterChip(selected = (type == selected), onClick = { onSelect(type) }, label = { Text(label) }, leadingIcon = if (type == selected) { { Icon(Icons.Filled.Check, null) } } else null, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = PrimaryBlue, selectedLabelColor = Color.White, selectedLeadingIconColor = Color.White)) } } }
+@Composable private fun EditFrequencySelector(selectedDays: Set<Int>, onChange: (Set<Int>) -> Unit) { val days = listOf("一", "二", "三", "四", "五", "六", "日"); Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { days.forEachIndexed { index, label -> val dayNum = index + 1; val isSelected = selectedDays.contains(dayNum); Box(modifier = Modifier.size(36.dp).clip(CircleShape).background(if (isSelected) PrimaryBlue else Color(0xFFEEEEEE)).clickable { val newSet = selectedDays.toMutableSet(); if (isSelected) newSet.remove(dayNum) else newSet.add(dayNum); if (newSet.isNotEmpty()) onChange(newSet) }, contentAlignment = Alignment.Center) { Text(label, color = if (isSelected) Color.White else Color.Gray) } } } }
+@Composable private fun EditDateRow(label: String, date: Long?, isNullable: Boolean = false, onDateChange: (Long?) -> Unit) { val context = LocalContext.current; val displayDate = if (date != null) SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(Date(date)) else "永久"; Row(modifier = Modifier.fillMaxWidth().clickable { showDatePickerDetail(context, date ?: System.currentTimeMillis()) { onDateChange(it) } }.background(Color(0xFFF9F9F9), RoundedCornerShape(8.dp)).padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(label, fontSize = 16.sp); Row(verticalAlignment = Alignment.CenterVertically) { Text(displayDate, color = if (date == null) Color.Gray else PrimaryBlue); Spacer(modifier = Modifier.width(8.dp)); Icon(Icons.Filled.DateRange, null, tint = Color.Gray, modifier = Modifier.size(20.dp)) } } }
+@Composable fun NoteInputDialog(initialValue: String, habitType: HabitType, targetValue: String?, onDismiss: () -> Unit, onConfirm: (String) -> Unit) { var text by remember { mutableStateOf(initialValue) }; val keyboardType = if (habitType == HabitType.Numeric) KeyboardType.Number else KeyboardType.Text; val label = if (habitType == HabitType.Numeric) "数值 (目标: $targetValue)" else "备注"; AlertDialog(onDismissRequest = onDismiss, title = { Text("编辑记录") }, text = { OutlinedTextField(value = text, onValueChange = { text = it }, label = { Text(label) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = keyboardType), modifier = Modifier.fillMaxWidth()) }, confirmButton = { TextButton(onClick = { onConfirm(text) }) { Text("保存") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }) }
+@Composable fun CompactCalendarSection(currentMonth: Long, selectedDate: Long, records: List<HabitRecord>, habit: Habit, onMonthChange: (Int) -> Unit, onDateClick: (Long) -> Unit) { val calendar = Calendar.getInstance().apply { timeInMillis = currentMonth }; val year = calendar.get(Calendar.YEAR); val month = calendar.get(Calendar.MONTH) + 1; val recordMap = remember(records) { records.associateBy { it.date } }; val today = getTodayZeroDetail(); val startDate = getStartOfDayDetail(habit.startDate); Column(modifier = Modifier.background(Color.White).padding(16.dp)) { Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) { IconButton(onClick = { onMonthChange(-1) }) { Icon(Icons.Filled.KeyboardArrowLeft, null) }; Text("$year 年 $month 月", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.Black); IconButton(onClick = { onMonthChange(1) }) { Icon(Icons.Filled.KeyboardArrowRight, null) } }; Row(Modifier.fillMaxWidth()) { listOf("日", "一", "二", "三", "四", "五", "六").forEach { Text(it, modifier = Modifier.weight(1f), textAlign = TextAlign.Center, fontSize = 12.sp, color = Color.Gray) } }; Spacer(Modifier.height(8.dp)); Column { val days = remember(currentMonth) { generateCalendarGridDetail(currentMonth) }; for (r in 0 until 6) { Row(Modifier.fillMaxWidth().height(48.dp)) { for (c in 0 until 7) { val index = r * 7 + c; if (index < days.size) { val date = days[index]; val isCurrentMonth = isSameMonthDetail(date, currentMonth); val record = recordMap[date]; val isSelected = (date == selectedDate); val isValidDate = date >= startDate && date <= today; Box(modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(4.dp)).background(if (isSelected) LightBlueBar else Color.Transparent).border(if (isSelected) 1.dp else 0.dp, if (isSelected) PrimaryBlue else Color.Transparent, RoundedCornerShape(4.dp)).clickable(enabled = isValidDate) { onDateClick(date) }, contentAlignment = Alignment.TopCenter) { Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 4.dp)) { Text(text = getDayStrDetail(date), color = if (!isValidDate) Color.LightGray.copy(alpha = 0.5f) else if (isCurrentMonth) Color.Black else Color.LightGray, fontSize = 14.sp, fontWeight = if (record?.isCompleted == true) FontWeight.Bold else FontWeight.Normal); if (record != null) { if (!record.value.isNullOrEmpty()) { Spacer(Modifier.height(0.dp)); val displayText = if (habit.type == HabitType.TimePoint) record.value else record.value.take(4); Text(text = displayText, fontSize = 7.sp, color = PrimaryBlue, maxLines = 1, overflow = TextOverflow.Ellipsis, lineHeight = 8.sp, textAlign = TextAlign.Center) } else if (record.isCompleted) { Spacer(Modifier.height(4.dp)); Box(modifier = Modifier.size(4.dp).background(PrimaryBlue, CircleShape)) } } } } } else { Spacer(Modifier.weight(1f)) } } } } } } }
+
+// ==================== 7. 主界面函数 ====================
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -504,267 +954,3 @@ fun HabitDetailScreen(
         }
     }
 }
-
-// ==================== 4. 复杂 UI 组件 ====================
-
-@Composable
-fun TagPieChart(records: List<HabitRecord>) {
-    val tagCounts = remember(records) {
-        val map = mutableMapOf<String, Int>()
-        records.forEach { record ->
-            if (record.tags.isNotBlank()) {
-                record.tags.split(",").forEach { tag ->
-                    if (tag.isNotBlank()) {
-                        map[tag] = map.getOrDefault(tag, 0) + 1
-                    }
-                }
-            }
-        }
-        map
-    }
-
-    if (tagCounts.isEmpty()) return
-
-    val total = tagCounts.values.sum()
-    val tags = tagCounts.keys.toList()
-    val counts = tagCounts.values.toList()
-
-    val colors = remember(tags) {
-        List(tags.size) { index ->
-            val alpha = 1.0f - (index * 0.8f / tags.size.coerceAtLeast(1))
-            PrimaryBlue.copy(alpha = alpha.coerceAtLeast(0.2f))
-        }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color.White)
-            .padding(16.dp)
-    ) {
-        Text("标签分布", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth().height(150.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier.weight(1f).aspectRatio(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    var startAngle = -90f
-                    counts.forEachIndexed { index, count ->
-                        val sweepAngle = (count.toFloat() / total) * 360f
-                        drawArc(
-                            color = colors[index],
-                            startAngle = startAngle,
-                            sweepAngle = sweepAngle,
-                            useCenter = true
-                        )
-                        startAngle += sweepAngle
-                    }
-                }
-            }
-            Spacer(modifier = Modifier.width(24.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                tags.forEachIndexed { index, tag ->
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
-                        Box(modifier = Modifier.size(12.dp).background(colors[index], CircleShape))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("$tag (${counts[index]})", fontSize = 12.sp, color = Color.Gray)
-                    }
-                }
-            }
-        }
-    }
-    Spacer(modifier = Modifier.height(16.dp))
-}
-
-@Composable
-fun StreakListSection(streaks: List<StreakInfo>) {
-    if (streaks.isEmpty()) return
-
-    // 最佳：天数最多 > 时间最早
-    val bestStreak = streaks.sortedWith(
-        compareByDescending<StreakInfo> { it.days }
-            .thenBy { it.startDate }
-    ).firstOrNull() ?: return
-
-    // 其他：时间倒序
-    val otherStreaks = streaks.filter { it != bestStreak }
-        .sortedByDescending { it.startDate }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color.White)
-            .padding(16.dp)
-    ) {
-        Text("最佳连续完成次数", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.Black)
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                // 1. 最佳
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(formatDateCN(bestStreak.startDate), color = Color.Gray, fontSize = 12.sp)
-                    Spacer(Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .width(100.dp)
-                            .height(32.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(PrimaryBlue),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("${bestStreak.days}", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Text(formatDateCN(bestStreak.endDate), color = Color.Gray, fontSize = 12.sp)
-                }
-
-                if (otherStreaks.isNotEmpty()) {
-                    Box(modifier = Modifier.width(2.dp).height(16.dp).background(Color(0xFFEEEEEE)))
-                }
-
-                // 2. 其他
-                otherStreaks.forEachIndexed { index, streak ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(formatDateCN(streak.startDate), color = Color.LightGray, fontSize = 12.sp)
-                        Spacer(Modifier.width(8.dp))
-                        Box(
-                            modifier = Modifier
-                                .width(40.dp)
-                                .height(24.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(Color(0xFFEEEEEE)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("${streak.days}", color = Color.Gray, fontSize = 12.sp)
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Text(formatDateCN(streak.endDate), color = Color.LightGray, fontSize = 12.sp)
-                    }
-                    if (index < otherStreaks.size - 1) {
-                        Box(modifier = Modifier.width(2.dp).height(16.dp).background(Color(0xFFEEEEEE)))
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun StatsGridSection(habit: Habit, stats: HabitStats) {
-    Column(modifier = Modifier.background(Color.White).padding(16.dp)) {
-        Row(Modifier.fillMaxWidth()) {
-            StatItem(Modifier.weight(1f), "开始时间", formatDateShortDetail(habit.startDate))
-            StatItem(Modifier.weight(1f), "重复", formatFrequencyDetail(habit.frequency))
-            StatItem(Modifier.weight(1f), "结束时间", if (habit.endDate != null) formatDateShortDetail(habit.endDate) else "-")
-        }
-        Spacer(Modifier.height(16.dp))
-        Row(Modifier.fillMaxWidth()) {
-            StatItem(Modifier.weight(1f), "类型", getTypeNameDetail(habit.type))
-            StatItem(Modifier.weight(1f), "目标", habit.targetValue ?: "-")
-            StatItem(Modifier.weight(1f), "已开始", "${stats.daysSinceStart}天")
-        }
-        Spacer(Modifier.height(16.dp))
-        Row(Modifier.fillMaxWidth()) {
-            StatItem(Modifier.weight(1f), "打卡", "${stats.totalCheckIns}天/${stats.checkInRate}%")
-            if (habit.type != HabitType.Normal) {
-                StatItem(Modifier.weight(1f), "平均", stats.avgValue)
-                StatItem(Modifier.weight(1f), "总共", stats.totalValue)
-            } else {
-                Spacer(Modifier.weight(2f))
-            }
-        }
-        if (habit.type != HabitType.Normal) {
-            Spacer(Modifier.height(16.dp))
-            Row(Modifier.fillMaxWidth()) {
-                StatItem(Modifier.weight(1f), "最小", stats.minValue)
-                StatItem(Modifier.weight(1f), "最大", stats.maxValue)
-                Spacer(Modifier.weight(1f))
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun EditHabitDialog(
-    habit: Habit,
-    onDismiss: () -> Unit,
-    onSave: (Habit) -> Unit
-) {
-    val context = LocalContext.current
-    var name by remember { mutableStateOf(habit.name) }
-    var selectedColor by remember { mutableStateOf(habit.color) }
-    var selectedType by remember { mutableStateOf(habit.type) }
-    var startDate by remember { mutableStateOf(habit.startDate) }
-    var endDate by remember { mutableStateOf(habit.endDate) }
-    var frequency by remember { mutableStateOf(parseFrequencyDetail(habit.frequency)) }
-    var targetValue by remember { mutableStateOf(habit.targetValue ?: "") }
-
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Scaffold(
-            containerColor = Color.White,
-            topBar = {
-                TopAppBar(
-                    title = { Text("修改习惯", color = Color.White) },
-                    navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.Filled.ArrowBack, "返回", tint = Color.White) } },
-                    actions = {
-                        TextButton(onClick = {
-                            if (name.isBlank()) {
-                                Toast.makeText(context, "请输入习惯名称", Toast.LENGTH_SHORT).show()
-                            } else {
-                                val updatedHabit = habit.copy(
-                                    name = name,
-                                    colorValue = selectedColor.value.toLong(),
-                                    type = selectedType,
-                                    startDate = startDate,
-                                    endDate = endDate,
-                                    frequency = frequency.joinToString(","),
-                                    targetValue = if (selectedType == HabitType.Normal) null else targetValue
-                                )
-                                onSave(updatedHabit)
-                            }
-                        }) { Text("保存", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White) }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = PrimaryBlue)
-                )
-            }
-        ) { innerPadding ->
-            Column(modifier = Modifier.padding(innerPadding).padding(16.dp).verticalScroll(rememberScrollState())) {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("习惯名称") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                Spacer(modifier = Modifier.height(24.dp)); Text("标记颜色", style = MaterialTheme.typography.titleSmall); Spacer(modifier = Modifier.height(8.dp)); EditColorSelector(selectedColor) { selectedColor = it }
-                Spacer(modifier = Modifier.height(24.dp)); Text("任务类型", style = MaterialTheme.typography.titleSmall); Spacer(modifier = Modifier.height(8.dp)); EditTypeSelector(selectedType) { selectedType = it }
-                if (selectedType != HabitType.Normal) { Spacer(modifier = Modifier.height(16.dp)); OutlinedTextField(value = targetValue, onValueChange = { targetValue = it }, label = { Text(when(selectedType) { HabitType.Numeric -> "目标数值 (如: 50)"; HabitType.Timer -> "目标时长 (如: 30分钟)"; HabitType.TimePoint -> "目标时刻 (如: 08:00)"; else -> "" }) }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
-                Spacer(modifier = Modifier.height(24.dp)); Text("重复时间", style = MaterialTheme.typography.titleSmall); Spacer(modifier = Modifier.height(8.dp)); EditFrequencySelector(frequency) { newSet -> frequency = newSet }
-                Spacer(modifier = Modifier.height(24.dp)); Text("有效日期", style = MaterialTheme.typography.titleSmall); Spacer(modifier = Modifier.height(8.dp)); EditDateRow("开始时间", startDate) { newDate -> if (newDate != null) startDate = newDate }; Spacer(modifier = Modifier.height(12.dp)); EditDateRow("结束时间", endDate, isNullable = true) { newDate -> endDate = newDate }
-            }
-        }
-    }
-}
-
-@Composable private fun EditColorSelector(selected: Color, onSelect: (Color) -> Unit) { val colors = listOf(Color(0xFF9C27B0), Color(0xFF03A9F4), Color(0xFF424242), Color(0xFFFF5722), Color(0xFF009688), Color(0xFFE91E63)); Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) { colors.forEach { color -> Box(modifier = Modifier.size(36.dp).clip(CircleShape).background(color).border(width = if (color == selected) 3.dp else 0.dp, color = Color.LightGray, shape = CircleShape).clickable { onSelect(color) }) } } }
-@Composable private fun EditTypeSelector(selected: HabitType, onSelect: (HabitType) -> Unit) { val types = listOf(HabitType.Normal to "普通", HabitType.Numeric to "数值", HabitType.Timer to "计时", HabitType.TimePoint to "时刻"); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { types.forEach { (type, label) -> FilterChip(selected = (type == selected), onClick = { onSelect(type) }, label = { Text(label) }, leadingIcon = if (type == selected) { { Icon(Icons.Filled.Check, null) } } else null, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = PrimaryBlue, selectedLabelColor = Color.White, selectedLeadingIconColor = Color.White)) } } }
-@Composable private fun EditFrequencySelector(selectedDays: Set<Int>, onChange: (Set<Int>) -> Unit) { val days = listOf("一", "二", "三", "四", "五", "六", "日"); Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { days.forEachIndexed { index, label -> val dayNum = index + 1; val isSelected = selectedDays.contains(dayNum); Box(modifier = Modifier.size(36.dp).clip(CircleShape).background(if (isSelected) PrimaryBlue else Color(0xFFEEEEEE)).clickable { val newSet = selectedDays.toMutableSet(); if (isSelected) newSet.remove(dayNum) else newSet.add(dayNum); if (newSet.isNotEmpty()) onChange(newSet) }, contentAlignment = Alignment.Center) { Text(label, color = if (isSelected) Color.White else Color.Gray) } } } }
-@Composable private fun EditDateRow(label: String, date: Long?, isNullable: Boolean = false, onDateChange: (Long?) -> Unit) { val context = LocalContext.current; val displayDate = if (date != null) SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(Date(date)) else "永久"; Row(modifier = Modifier.fillMaxWidth().clickable { showDatePickerDetail(context, date ?: System.currentTimeMillis()) { onDateChange(it) } }.background(Color(0xFFF9F9F9), RoundedCornerShape(8.dp)).padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(label, fontSize = 16.sp); Row(verticalAlignment = Alignment.CenterVertically) { Text(displayDate, color = if (date == null) Color.Gray else PrimaryBlue); Spacer(modifier = Modifier.width(8.dp)); Icon(Icons.Filled.DateRange, null, tint = Color.Gray, modifier = Modifier.size(20.dp)) } } }
-private fun showDatePickerDetail(context: android.content.Context, initialDate: Long, onDateSelected: (Long) -> Unit) { val calendar = Calendar.getInstance(); calendar.timeInMillis = initialDate; android.app.DatePickerDialog(context, { _, year, month, dayOfMonth -> calendar.set(year, month, dayOfMonth, 0, 0, 0); onDateSelected(calendar.timeInMillis) }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)).show() }
-
-// 【修改】使用通用弹窗
-@Composable fun DayEditorSection(selectedDate: Long, habit: Habit, records: List<HabitRecord>, allTags: List<Tag>, viewModel: HabitViewModel) { val currentRecord = records.find { it.date == selectedDate }; val isCompleted = currentRecord?.isCompleted ?: false; val currentNote = currentRecord?.value ?: ""; val currentTags = currentRecord?.tags ?: ""; val today = getTodayZeroDetail(); val startDate = getStartOfDayDetail(habit.startDate); val isValidDate = selectedDate >= startDate && selectedDate <= today; var showEditorDialog by remember { mutableStateOf(false) }; if (showEditorDialog) { RecordEditorDialog(initialNote = currentNote, initialTags = currentTags, allTags = allTags, habitType = habit.type, targetValue = habit.targetValue, onDismiss = { showEditorDialog = false }, onConfirm = { note, tags -> viewModel.updateRecord(habit, selectedDate, isCompleted = null, note = note, tags = tags); showEditorDialog = false }, onAddTag = { viewModel.addTag(it) }, onDeleteTag = { viewModel.deleteTag(it) }) }; Column(modifier = Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 16.dp, vertical = 12.dp)) { Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = isCompleted, enabled = isValidDate, onCheckedChange = { checked -> viewModel.updateRecord(habit, selectedDate, isCompleted = checked, note = null, tags = null) }, colors = CheckboxDefaults.colors(checkedColor = PrimaryBlue)); Spacer(Modifier.width(8.dp)); Box(modifier = Modifier.weight(1f).height(42.dp).clip(RoundedCornerShape(4.dp)).background(Color(0xFFF5F5F5)).clickable(enabled = isValidDate) { showEditorDialog = true }.padding(horizontal = 12.dp), contentAlignment = Alignment.CenterStart) { if (!isValidDate) Text("无法在此时段记录", color = Color.LightGray, fontSize = 14.sp) else { if (currentNote.isEmpty() && currentTags.isEmpty()) Text("添加备注或标签...", color = Color.Gray, fontSize = 14.sp) else { val display = if(currentTags.isNotEmpty()) "🏷️$currentTags $currentNote" else currentNote; Text(display, color = Color.Black, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) } } } } } }
-
-@Composable fun CompactCalendarSection(currentMonth: Long, selectedDate: Long, records: List<HabitRecord>, habit: Habit, onMonthChange: (Int) -> Unit, onDateClick: (Long) -> Unit) { val calendar = Calendar.getInstance().apply { timeInMillis = currentMonth }; val year = calendar.get(Calendar.YEAR); val month = calendar.get(Calendar.MONTH) + 1; val recordMap = remember(records) { records.associateBy { it.date } }; val today = getTodayZeroDetail(); val startDate = getStartOfDayDetail(habit.startDate); Column(modifier = Modifier.background(Color.White).padding(16.dp)) { Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) { IconButton(onClick = { onMonthChange(-1) }) { Icon(Icons.Filled.KeyboardArrowLeft, null) }; Text("$year 年 $month 月", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.Black); IconButton(onClick = { onMonthChange(1) }) { Icon(Icons.Filled.KeyboardArrowRight, null) } }; Row(Modifier.fillMaxWidth()) { listOf("日", "一", "二", "三", "四", "五", "六").forEach { Text(it, modifier = Modifier.weight(1f), textAlign = TextAlign.Center, fontSize = 12.sp, color = Color.Gray) } }; Spacer(Modifier.height(8.dp)); Column { val days = remember(currentMonth) { generateCalendarGridDetail(currentMonth) }; for (r in 0 until 6) { Row(Modifier.fillMaxWidth().height(48.dp)) { for (c in 0 until 7) { val index = r * 7 + c; if (index < days.size) { val date = days[index]; val isCurrentMonth = isSameMonthDetail(date, currentMonth); val record = recordMap[date]; val isSelected = (date == selectedDate); val isValidDate = date >= startDate && date <= today; Box(modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(4.dp)).background(if (isSelected) LightBlueBar else Color.Transparent).border(if (isSelected) 1.dp else 0.dp, if (isSelected) PrimaryBlue else Color.Transparent, RoundedCornerShape(4.dp)).clickable(enabled = isValidDate) { onDateClick(date) }, contentAlignment = Alignment.TopCenter) { Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 4.dp)) { Text(text = getDayStrDetail(date), color = if (!isValidDate) Color.LightGray.copy(alpha = 0.5f) else if (isCurrentMonth) Color.Black else Color.LightGray, fontSize = 14.sp, fontWeight = if (record?.isCompleted == true) FontWeight.Bold else FontWeight.Normal); if (record != null) { if (!record.value.isNullOrEmpty()) { Spacer(Modifier.height(0.dp)); val displayText = if (habit.type == HabitType.TimePoint) record.value else record.value.take(4); Text(text = displayText, fontSize = 7.sp, color = PrimaryBlue, maxLines = 1, overflow = TextOverflow.Ellipsis, lineHeight = 8.sp, textAlign = TextAlign.Center) } else if (record.isCompleted) { Spacer(Modifier.height(4.dp)); Box(modifier = Modifier.size(4.dp).background(PrimaryBlue, CircleShape)) } } } } } else { Spacer(Modifier.weight(1f)) } } } } } } }
-@Composable fun CheckInBarChart(records: List<HabitRecord>, period: ChartPeriod, graphColor: Color) { val dataPoints = remember(records, period) { generateCheckInStatsDetail(records, period) }; if (dataPoints.isEmpty()) { Box(Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) { Text("暂无打卡数据", color = Color.LightGray) }; return }; val maxValue = dataPoints.maxOf { it.second }.coerceAtLeast(1); Row(modifier = Modifier.fillMaxWidth().height(160.dp)) { Column(modifier = Modifier.width(30.dp).fillMaxHeight().padding(bottom = 20.dp), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.End) { Text("$maxValue", fontSize = 10.sp, color = Color.Gray); Text("${maxValue/2}", fontSize = 10.sp, color = Color.Gray); Text("0", fontSize = 10.sp, color = Color.Gray) }; Spacer(modifier = Modifier.width(8.dp)); Canvas(modifier = Modifier.weight(1f).fillMaxHeight()) { val barWidth = size.width / (dataPoints.size * 1.5f); val stepX = size.width / dataPoints.size; val chartHeight = size.height - 40f; drawLine(Color(0xFFEEEEEE), Offset(0f, 0f), Offset(size.width, 0f)); drawLine(Color(0xFFEEEEEE), Offset(0f, chartHeight), Offset(size.width, chartHeight)); dataPoints.forEachIndexed { index, (label, count) -> val barHeight = (count.toFloat() / maxValue) * chartHeight; val x = index * stepX + (stepX - barWidth) / 2; val y = chartHeight - barHeight; drawRect(color = graphColor, topLeft = Offset(x, y), size = Size(barWidth, barHeight)); if (dataPoints.size < 15 || index % (dataPoints.size/5) == 0) { drawContext.canvas.nativeCanvas.apply { val paint = android.graphics.Paint().apply { this.color = android.graphics.Color.GRAY; textSize = 24f; textAlign = android.graphics.Paint.Align.CENTER }; drawText(label, x + barWidth/2, size.height - 10f, paint) } } } } } }
-@Composable fun ValueLineChartV2(records: List<HabitRecord>, graphColor: Color, habitType: HabitType) { var selectedIndex by remember { mutableStateOf(-1) }; val dataPoints = remember(records, habitType) { records.mapNotNull { record -> val value = extractValueDetail(record.value, habitType); if (value != null && value > 0) Pair(record.date, value) else null }.sortedBy { it.first }.takeLast(15) }; if (dataPoints.isEmpty()) { Box(Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) { Text("暂无数值记录", color = Color.LightGray) }; return }; val yValues = dataPoints.map { it.second }; val maxY = yValues.maxOrNull() ?: 10f; val minY = yValues.minOrNull() ?: 0f; val yRange = (maxY - minY).coerceAtLeast(1f); Row(modifier = Modifier.fillMaxWidth().height(180.dp)) { Column(modifier = Modifier.width(40.dp).fillMaxHeight().padding(vertical = 10.dp), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.End) { Text(formatYLabel(maxY, habitType), fontSize = 10.sp, color = Color.Gray); Text(formatYLabel((maxY+minY)/2, habitType), fontSize = 10.sp, color = Color.Gray); Text(formatYLabel(minY, habitType), fontSize = 10.sp, color = Color.Gray) }; Spacer(modifier = Modifier.width(8.dp)); Canvas(modifier = Modifier.weight(1f).fillMaxHeight().pointerInput(Unit) { detectTapGestures(onTap = { offset -> val w = size.width; if (dataPoints.size > 1) { val stepX = w / (dataPoints.size - 1); val index = (offset.x / stepX).let { Math.round(it).toInt() }; if (index in dataPoints.indices) { val pointX = index * stepX; if (abs(pointX - offset.x) < 40f) { selectedIndex = index } else { selectedIndex = -1 } } } else { selectedIndex = if (dataPoints.isNotEmpty()) 0 else -1 } }) }) { val w = size.width; val h = size.height; val paddingBottom = 40f; drawLine(Color(0xFFEEEEEE), Offset(0f, 0f), Offset(w, 0f)); drawLine(Color(0xFFEEEEEE), Offset(0f, (h-paddingBottom)/2), Offset(w, (h-paddingBottom)/2)); drawLine(Color(0xFFEEEEEE), Offset(0f, h-paddingBottom), Offset(w, h-paddingBottom)); if (dataPoints.size == 1) { val cx = w / 2; val cy = (h - paddingBottom) / 2; drawCircle(color = graphColor, radius = 4.dp.toPx(), center = Offset(cx, cy)); drawContext.canvas.nativeCanvas.apply { val paint = android.graphics.Paint().apply { color = android.graphics.Color.GRAY; textSize = 24f; textAlign = android.graphics.Paint.Align.CENTER }; drawText(formatDateShortMMDDDetail(dataPoints[0].first), cx, h, paint) }; return@Canvas }; val path = Path(); dataPoints.forEachIndexed { index, (timestamp, value) -> val xRatio = (timestamp - dataPoints.first().first).toFloat() / (dataPoints.last().first - dataPoints.first().first).coerceAtLeast(1L).toFloat(); val x = xRatio * w; val yRatio = (value - minY) / yRange; val y = (h - paddingBottom) - (yRatio * (h - paddingBottom) * 0.8f) - ((h - paddingBottom) * 0.1f); if (index == 0) path.moveTo(x, y) else path.lineTo(x, y); drawCircle(color = graphColor, radius = 3.dp.toPx(), center = Offset(x, y)); val shouldDrawLabel = when { dataPoints.size <= 5 -> true; index == 0 || index == dataPoints.size - 1 -> true; index % (dataPoints.size / 3) == 0 -> true; else -> false }; if (shouldDrawLabel) { drawContext.canvas.nativeCanvas.apply { val paint = android.graphics.Paint().apply { color = android.graphics.Color.GRAY; textSize = 24f; textAlign = android.graphics.Paint.Align.CENTER }; drawText(formatDateShortMMDDDetail(timestamp), x, h - 10f, paint) } }; if (index == selectedIndex) { drawCircle(graphColor.copy(alpha=0.2f), radius=8.dp.toPx(), center=Offset(x, y)); drawCircle(graphColor, radius=4.dp.toPx(), center=Offset(x, y)); val text = formatYLabel(value, habitType); drawContext.canvas.nativeCanvas.apply { val paint = android.graphics.Paint().apply { color = android.graphics.Color.BLACK; textSize = 30f; textAlign = android.graphics.Paint.Align.CENTER; isFakeBoldText = true }; drawText(text, x, y - 20f, paint) } } }; drawPath(path, color = graphColor, style = Stroke(width = 2.dp.toPx())) } } }
