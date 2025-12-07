@@ -163,7 +163,6 @@ private fun parseFrequencyDetail(freqStr: String): Set<Int> {
     }
 }
 
-// 弹窗辅助函数 (只保留这一个定义)
 private fun showDatePickerDetail(context: Context, initialDate: Long, onDateSelected: (Long) -> Unit) {
     val calendar = Calendar.getInstance()
     calendar.timeInMillis = initialDate
@@ -333,9 +332,7 @@ private fun generateCheckInStatsDetail(records: List<HabitRecord>, period: Chart
     return result
 }
 
-// ============================================================================================
-// 3. 所有 UI 组件 (置顶定义)
-// ============================================================================================
+// ==================== 3. UI 组件 (置顶定义) ====================
 
 @Composable
 fun StatItem(modifier: Modifier, label: String, value: String) {
@@ -420,6 +417,7 @@ fun CheckInBarChart(records: List<HabitRecord>, period: ChartPeriod, graphColor:
 @Composable
 fun ValueLineChartV2(records: List<HabitRecord>, graphColor: Color, habitType: HabitType) {
     var selectedIndex by remember { mutableStateOf(-1) }
+
     val dataPoints = remember(records, habitType) {
         records.mapNotNull { record ->
             val value = extractValueDetail(record.value, habitType)
@@ -506,6 +504,8 @@ fun ValueLineChartV2(records: List<HabitRecord>, graphColor: Color, habitType: H
         }
     }
 }
+
+// ==================== 4. 复杂 UI 组件 (Sections) ====================
 
 @Composable
 fun TagPieChart(records: List<HabitRecord>) {
@@ -645,7 +645,7 @@ fun DayEditorSection(
                     Text("无法在此时段记录", color = Color.LightGray, fontSize = 14.sp)
                 } else {
                     if (currentNote.isEmpty() && currentTags.isEmpty()) {
-                        Text("添加备注或标签...", color = Color.Gray, fontSize = 14.sp)
+                        Text("添加备注/标签", color = Color.Gray, fontSize = 14.sp)
                     } else {
                         val display = if(currentTags.isNotEmpty()) "🏷️$currentTags $currentNote" else currentNote
                         Text(display, color = Color.Black, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -710,8 +710,14 @@ fun StreakListSection(streaks: List<StreakInfo>) {
                         Spacer(Modifier.width(8.dp))
                         Text(formatDateCN(streak.endDate), color = dateColor, fontSize = 12.sp)
                     }
+
                     if (index < otherStreaks.size - 1) {
-                        Box(modifier = Modifier.width(2.dp).height(16.dp).background(Color(0xFFEEEEEE)))
+                        Box(
+                            modifier = Modifier
+                                .width(2.dp)
+                                .height(16.dp)
+                                .background(Color(0xFFEEEEEE))
+                        )
                     }
                 }
             }
@@ -753,6 +759,96 @@ fun StatsGridSection(habit: Habit, stats: HabitStats) {
         }
     }
 }
+
+@Composable
+fun CompactCalendarSection(
+    currentMonth: Long,
+    selectedDate: Long,
+    records: List<HabitRecord>,
+    habit: Habit,
+    onMonthChange: (Int) -> Unit,
+    onDateClick: (Long) -> Unit
+) {
+    val calendar = Calendar.getInstance().apply { timeInMillis = currentMonth }
+    val year = calendar.get(Calendar.YEAR)
+    val month = calendar.get(Calendar.MONTH) + 1
+    val recordMap = remember(records) { records.associateBy { it.date } }
+    val today = getTodayZeroDetail()
+    val startDate = getStartOfDayDetail(habit.startDate)
+
+    Column(modifier = Modifier.background(Color.White).padding(16.dp)) {
+        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+            IconButton(onClick = { onMonthChange(-1) }) { Icon(Icons.Filled.KeyboardArrowLeft, null) }
+            Text("$year 年 $month 月", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.Black)
+            IconButton(onClick = { onMonthChange(1) }) { Icon(Icons.Filled.KeyboardArrowRight, null) }
+        }
+        Row(Modifier.fillMaxWidth()) {
+            listOf("日", "一", "二", "三", "四", "五", "六").forEach {
+                Text(it, modifier = Modifier.weight(1f), textAlign = TextAlign.Center, fontSize = 12.sp, color = Color.Gray)
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Column {
+            val days = remember(currentMonth) { generateCalendarGridDetail(currentMonth) }
+            for (r in 0 until 6) {
+                Row(Modifier.fillMaxWidth().height(48.dp)) {
+                    for (c in 0 until 7) {
+                        val index = r * 7 + c
+                        if (index < days.size) {
+                            val date = days[index]
+                            val isCurrentMonth = isSameMonthDetail(date, currentMonth)
+                            val record = recordMap[date]
+                            val isSelected = (date == selectedDate)
+                            val isValidDate = date >= startDate && date <= today
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f).fillMaxHeight()
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (isSelected) LightBlueBar else Color.Transparent)
+                                    .border(if (isSelected) 1.dp else 0.dp, if (isSelected) PrimaryBlue else Color.Transparent, RoundedCornerShape(4.dp))
+                                    .clickable(enabled = isValidDate) { onDateClick(date) },
+                                contentAlignment = Alignment.TopCenter
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 4.dp)) {
+                                    Text(
+                                        text = getDayStrDetail(date),
+                                        color = if (!isValidDate) Color.LightGray.copy(alpha = 0.5f)
+                                        else if (isCurrentMonth) Color.Black else Color.LightGray,
+                                        fontSize = 14.sp,
+                                        fontWeight = if (record?.isCompleted == true) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                    if (record != null) {
+                                        if (!record.value.isNullOrEmpty()) {
+                                            Spacer(Modifier.height(0.dp))
+                                            val displayText = if (habit.type == HabitType.TimePoint) record.value else record.value.take(4)
+                                            Text(
+                                                text = displayText,
+                                                fontSize = 7.sp,
+                                                color = PrimaryBlue,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                lineHeight = 8.sp,
+                                                textAlign = TextAlign.Center
+                                            )
+                                        } else if (record.isCompleted) {
+                                            Spacer(Modifier.height(4.dp))
+                                            Box(modifier = Modifier.size(4.dp).background(PrimaryBlue, CircleShape))
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            Spacer(Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ... 编辑弹窗组件 ...
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -815,8 +911,8 @@ fun EditHabitDialog(
 @OptIn(ExperimentalMaterial3Api::class) @Composable private fun EditTypeSelector(selected: HabitType, onSelect: (HabitType) -> Unit) { val types = listOf(HabitType.Normal to "普通", HabitType.Numeric to "数值", HabitType.Timer to "计时", HabitType.TimePoint to "时刻"); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { types.forEach { (type, label) -> FilterChip(selected = (type == selected), onClick = { onSelect(type) }, label = { Text(label) }, leadingIcon = if (type == selected) { { Icon(Icons.Filled.Check, null) } } else null, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = PrimaryBlue, selectedLabelColor = Color.White, selectedLeadingIconColor = Color.White)) } } }
 @Composable private fun EditFrequencySelector(selectedDays: Set<Int>, onChange: (Set<Int>) -> Unit) { val days = listOf("一", "二", "三", "四", "五", "六", "日"); Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { days.forEachIndexed { index, label -> val dayNum = index + 1; val isSelected = selectedDays.contains(dayNum); Box(modifier = Modifier.size(36.dp).clip(CircleShape).background(if (isSelected) PrimaryBlue else Color(0xFFEEEEEE)).clickable { val newSet = selectedDays.toMutableSet(); if (isSelected) newSet.remove(dayNum) else newSet.add(dayNum); if (newSet.isNotEmpty()) onChange(newSet) }, contentAlignment = Alignment.Center) { Text(label, color = if (isSelected) Color.White else Color.Gray) } } } }
 @Composable private fun EditDateRow(label: String, date: Long?, isNullable: Boolean = false, onDateChange: (Long?) -> Unit) { val context = LocalContext.current; val displayDate = if (date != null) SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(Date(date)) else "永久"; Row(modifier = Modifier.fillMaxWidth().clickable { showDatePickerDetail(context, date ?: System.currentTimeMillis()) { onDateChange(it) } }.background(Color(0xFFF9F9F9), RoundedCornerShape(8.dp)).padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(label, fontSize = 16.sp); Row(verticalAlignment = Alignment.CenterVertically) { Text(displayDate, color = if (date == null) Color.Gray else PrimaryBlue); Spacer(modifier = Modifier.width(8.dp)); Icon(Icons.Filled.DateRange, null, tint = Color.Gray, modifier = Modifier.size(20.dp)) } } }
+
 @Composable fun NoteInputDialog(initialValue: String, habitType: HabitType, targetValue: String?, onDismiss: () -> Unit, onConfirm: (String) -> Unit) { var text by remember { mutableStateOf(initialValue) }; val keyboardType = if (habitType == HabitType.Numeric) KeyboardType.Number else KeyboardType.Text; val label = if (habitType == HabitType.Numeric) "数值 (目标: $targetValue)" else "备注"; AlertDialog(onDismissRequest = onDismiss, title = { Text("编辑记录") }, text = { OutlinedTextField(value = text, onValueChange = { text = it }, label = { Text(label) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = keyboardType), modifier = Modifier.fillMaxWidth()) }, confirmButton = { TextButton(onClick = { onConfirm(text) }) { Text("保存") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }) }
-@Composable fun CompactCalendarSection(currentMonth: Long, selectedDate: Long, records: List<HabitRecord>, habit: Habit, onMonthChange: (Int) -> Unit, onDateClick: (Long) -> Unit) { val calendar = Calendar.getInstance().apply { timeInMillis = currentMonth }; val year = calendar.get(Calendar.YEAR); val month = calendar.get(Calendar.MONTH) + 1; val recordMap = remember(records) { records.associateBy { it.date } }; val today = getTodayZeroDetail(); val startDate = getStartOfDayDetail(habit.startDate); Column(modifier = Modifier.background(Color.White).padding(16.dp)) { Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) { IconButton(onClick = { onMonthChange(-1) }) { Icon(Icons.Filled.KeyboardArrowLeft, null) }; Text("$year 年 $month 月", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.Black); IconButton(onClick = { onMonthChange(1) }) { Icon(Icons.Filled.KeyboardArrowRight, null) } }; Row(Modifier.fillMaxWidth()) { listOf("日", "一", "二", "三", "四", "五", "六").forEach { Text(it, modifier = Modifier.weight(1f), textAlign = TextAlign.Center, fontSize = 12.sp, color = Color.Gray) } }; Spacer(Modifier.height(8.dp)); Column { val days = remember(currentMonth) { generateCalendarGridDetail(currentMonth) }; for (r in 0 until 6) { Row(Modifier.fillMaxWidth().height(48.dp)) { for (c in 0 until 7) { val index = r * 7 + c; if (index < days.size) { val date = days[index]; val isCurrentMonth = isSameMonthDetail(date, currentMonth); val record = recordMap[date]; val isSelected = (date == selectedDate); val isValidDate = date >= startDate && date <= today; Box(modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(4.dp)).background(if (isSelected) LightBlueBar else Color.Transparent).border(if (isSelected) 1.dp else 0.dp, if (isSelected) PrimaryBlue else Color.Transparent, RoundedCornerShape(4.dp)).clickable(enabled = isValidDate) { onDateClick(date) }, contentAlignment = Alignment.TopCenter) { Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 4.dp)) { Text(text = getDayStrDetail(date), color = if (!isValidDate) Color.LightGray.copy(alpha = 0.5f) else if (isCurrentMonth) Color.Black else Color.LightGray, fontSize = 14.sp, fontWeight = if (record?.isCompleted == true) FontWeight.Bold else FontWeight.Normal); if (record != null) { if (!record.value.isNullOrEmpty()) { Spacer(Modifier.height(0.dp)); val displayText = if (habit.type == HabitType.TimePoint) record.value else record.value.take(4); Text(text = displayText, fontSize = 7.sp, color = PrimaryBlue, maxLines = 1, overflow = TextOverflow.Ellipsis, lineHeight = 8.sp, textAlign = TextAlign.Center) } else if (record.isCompleted) { Spacer(Modifier.height(4.dp)); Box(modifier = Modifier.size(4.dp).background(PrimaryBlue, CircleShape)) } } } } } else { Spacer(Modifier.weight(1f)) } } } } } } }
 
 // ==================== 7. 主界面函数 ====================
 
@@ -830,126 +926,35 @@ fun HabitDetailScreen(
 ) {
     val habitState by viewModel.getHabitFlow(habit.id).collectAsState(initial = habit)
     val currentHabit = habitState ?: habit
-
     val recordsFlow = remember(currentHabit.id) { viewModel.getHabitRecords(currentHabit.id) }
     val rawRecordsState = recordsFlow.collectAsState()
     val rawRecords = rawRecordsState.value
-
     val records: List<HabitRecord> = remember(rawRecords) { processRecordsDetail(rawRecords) }
     val stats: HabitStats = remember(records, currentHabit) { calculateStatsDetail(currentHabit, records) }
     val allStreaks = remember(records) { calculateAllStreaksDetail(records) }
     val allTags by viewModel.allTags.collectAsState()
-
     var selectedDate: Long by remember { mutableStateOf(getTodayZeroDetail()) }
     var currentCalendarMonth: Long by remember { mutableStateOf(getStartOfMonthDetail(System.currentTimeMillis())) }
     var checkInChartPeriod: ChartPeriod by remember { mutableStateOf(ChartPeriod.Month) }
-
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
 
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("删除习惯") },
-            text = { Text("确定要删除 \"${currentHabit.name}\" 及其所有历史记录吗？此操作无法撤销。") },
-            confirmButton = {
-                TextButton(onClick = { showDeleteDialog = false; onDelete() }) { Text("删除", color = Color.Red) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) { Text("取消") }
-            }
-        )
-    }
+    if (showDeleteDialog) { AlertDialog(onDismissRequest = { showDeleteDialog = false }, title = { Text("删除习惯") }, text = { Text("确定要删除 \"${currentHabit.name}\" 及其所有历史记录吗？此操作无法撤销。") }, confirmButton = { TextButton(onClick = { showDeleteDialog = false; onDelete() }) { Text("删除", color = Color.Red) } }, dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("取消") } }) }
+    if (showEditDialog) { EditHabitDialog(habit = currentHabit, onDismiss = { showEditDialog = false }, onSave = { newHabit -> viewModel.updateHabitDetails(newHabit); showEditDialog = false }) }
 
-    if (showEditDialog) {
-        EditHabitDialog(
-            habit = currentHabit,
-            onDismiss = { showEditDialog = false },
-            onSave = { newHabit ->
-                viewModel.updateHabitDetails(newHabit)
-                showEditDialog = false
-            }
-        )
-    }
-
-    Scaffold(
-        containerColor = Color.White,
-        topBar = {
-            TopAppBar(
-                title = { Text(currentHabit.name, color = Color.Black) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, "返回", tint = Color.Black)
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showEditDialog = true }) {
-                        Icon(Icons.Filled.Edit, "修改", tint = PrimaryBlue)
-                    }
-                    IconButton(onClick = { showDeleteDialog = true }) {
-                        Icon(Icons.Filled.Delete, "删除", tint = Color.Red)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = LightBlueBar)
-            )
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .background(ContentBackground)
-        ) {
+    Scaffold(containerColor = Color.White, topBar = { TopAppBar(title = { Text(currentHabit.name, color = Color.Black) }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "返回", tint = Color.Black) } }, actions = { IconButton(onClick = { showEditDialog = true }) { Icon(Icons.Filled.Edit, "修改", tint = PrimaryBlue) }; IconButton(onClick = { showDeleteDialog = true }) { Icon(Icons.Filled.Delete, "删除", tint = Color.Red) } }, colors = TopAppBarDefaults.topAppBarColors(containerColor = LightBlueBar)) }) { innerPadding ->
+        Column(modifier = Modifier.padding(innerPadding).verticalScroll(rememberScrollState()).background(ContentBackground)) {
             StatsGridSection(currentHabit, stats)
             Spacer(modifier = Modifier.height(12.dp))
-
-            CompactCalendarSection(
-                currentMonth = currentCalendarMonth,
-                selectedDate = selectedDate,
-                records = records,
-                habit = currentHabit,
-                onMonthChange = { diff ->
-                    val cal = Calendar.getInstance().apply { timeInMillis = currentCalendarMonth; add(Calendar.MONTH, diff) }
-                    currentCalendarMonth = cal.timeInMillis
-                },
-                onDateClick = { date -> selectedDate = date }
-            )
-
-            // 使用通用 RecordEditorDialog 的 DayEditorSection
-            DayEditorSection(
-                selectedDate = selectedDate,
-                habit = currentHabit,
-                records = records,
-                allTags = allTags,
-                viewModel = viewModel
-            )
-
+            CompactCalendarSection(currentMonth = currentCalendarMonth, selectedDate = selectedDate, records = records, habit = currentHabit, onMonthChange = { diff -> val cal = Calendar.getInstance().apply { timeInMillis = currentCalendarMonth; add(Calendar.MONTH, diff) }; currentCalendarMonth = cal.timeInMillis }, onDateClick = { date -> selectedDate = date })
+            DayEditorSection(selectedDate = selectedDate, habit = currentHabit, records = records, allTags = allTags, viewModel = viewModel)
             Spacer(modifier = Modifier.height(16.dp))
-
-            // 标签饼图
             TagPieChart(records)
-
-            ChartSectionContainer(
-                title = "打卡统计",
-                action = { PeriodSelector(checkInChartPeriod) { period -> checkInChartPeriod = period } }
-            ) {
-                CheckInBarChart(records, checkInChartPeriod, graphColor = PrimaryBlue)
-            }
-
+            ChartSectionContainer(title = "打卡统计", action = { PeriodSelector(checkInChartPeriod) { period -> checkInChartPeriod = period } }) { CheckInBarChart(records, checkInChartPeriod, graphColor = PrimaryBlue) }
             Spacer(modifier = Modifier.height(16.dp))
-
-            // 最佳连续次数
             StreakListSection(allStreaks)
-
             Spacer(modifier = Modifier.height(16.dp))
-
-            if (currentHabit.type != HabitType.Normal) {
-                ChartSectionContainer(title = "数值统计") {
-                    ValueLineChartV2(records, graphColor = PrimaryBlue, habitType = currentHabit.type)
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
+            if (currentHabit.type != HabitType.Normal) { ChartSectionContainer(title = "数值统计") { ValueLineChartV2(records, graphColor = PrimaryBlue, habitType = currentHabit.type) }; Spacer(modifier = Modifier.height(16.dp)) }
             Spacer(modifier = Modifier.height(50.dp))
         }
     }

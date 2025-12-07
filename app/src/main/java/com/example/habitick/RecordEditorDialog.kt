@@ -1,7 +1,8 @@
 package com.example.habitick
 
-import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.ExperimentalFoundationApi // 【修复】补上这个关键导包
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -24,17 +25,16 @@ import com.example.habitick.ui.theme.PrimaryBlue
 @Composable
 fun RecordEditorDialog(
     initialNote: String,
-    initialTags: String, // "tag1,tag2"
+    initialTags: String,
     allTags: List<Tag>,
     habitType: HabitType,
     targetValue: String?,
     onDismiss: () -> Unit,
-    onConfirm: (String, String) -> Unit, // note, tags
+    onConfirm: (String, String) -> Unit,
     onAddTag: (String) -> Unit,
     onDeleteTag: (String) -> Unit
 ) {
     var note by remember { mutableStateOf(initialNote) }
-    // 解析初始标签
     val selectedTags = remember { mutableStateListOf<String>().apply {
         if (initialTags.isNotBlank()) addAll(initialTags.split(","))
     } }
@@ -44,7 +44,6 @@ fun RecordEditorDialog(
     val keyboardType = if (habitType == HabitType.Numeric) KeyboardType.Number else KeyboardType.Text
     val label = if (habitType == HabitType.Numeric) "数值 (目标: $targetValue)" else "备注"
 
-    // 添加标签子弹窗
     if (showAddTagDialog) {
         var newTagName by remember { mutableStateOf("") }
         AlertDialog(
@@ -82,7 +81,6 @@ fun RecordEditorDialog(
                 Text("编辑记录", style = MaterialTheme.typography.titleLarge, color = Color.Black)
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // 1. 备注/数值输入
                 OutlinedTextField(
                     value = note,
                     onValueChange = { note = it },
@@ -94,7 +92,6 @@ fun RecordEditorDialog(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // 2. 标签管理区域
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("标签", style = MaterialTheme.typography.titleMedium, color = Color.Gray)
                     Spacer(modifier = Modifier.width(8.dp))
@@ -125,7 +122,6 @@ fun RecordEditorDialog(
                                 selectedLabelColor = Color.White,
                                 containerColor = Color(0xFFF5F5F5)
                             ),
-                            // 长按删除标签
                             modifier = Modifier.combinedClickable(
                                 onClick = {
                                     if (isSelected) selectedTags.remove(tag.name)

@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
@@ -22,7 +21,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,28 +36,37 @@ fun HistoryScreen(
 ) {
     val heatmapData by viewModel.heatmapData.collectAsState()
     val selectedDate by viewModel.selectedDate.collectAsState()
-    // 【修复】显式类型 List<HabitRecord>
-    val selectedRecords: List<HabitRecord> by viewModel.selectedDateRecords.collectAsState()
+    val selectedRecords by viewModel.selectedDateRecords.collectAsState()
     val currentViewingMonth by viewModel.currentViewingMonth.collectAsState()
     val allHabits by viewModel.habits.collectAsState()
+    // 【新增】获取所有标签，供弹窗选择
+    val allTags by viewModel.allTags.collectAsState()
 
     val monthDays = remember(currentViewingMonth) { generateDaysForMonthHistory(currentViewingMonth) }
     val oneYearAgoStart = remember { getOneYearAgoStartHistory() }
 
-    var showInputDialog by remember { mutableStateOf(false) }
+    // 弹窗状态
+    var showEditorDialog by remember { mutableStateOf(false) }
     var editingHabit by remember { mutableStateOf<Habit?>(null) }
     var editingRecordValue by remember { mutableStateOf("") }
+    var editingRecordTags by remember { mutableStateOf("") }
 
-    if (showInputDialog && editingHabit != null) {
-        HistoryNoteInputDialog(
-            initialValue = editingRecordValue,
+    // 【核心修改】使用通用的 RecordEditorDialog (带标签功能)
+    if (showEditorDialog && editingHabit != null) {
+        RecordEditorDialog(
+            initialNote = editingRecordValue,
+            initialTags = editingRecordTags,
+            allTags = allTags,
             habitType = editingHabit!!.type,
             targetValue = editingHabit!!.targetValue,
-            onDismiss = { showInputDialog = false },
-            onConfirm = { newValue ->
-                viewModel.updateRecord(editingHabit!!, selectedDate, isCompleted = null, note = newValue)
-                showInputDialog = false
-            }
+            onDismiss = { showEditorDialog = false },
+            onConfirm = { note, tags ->
+                // 保存备注和标签
+                viewModel.updateRecord(editingHabit!!, selectedDate, isCompleted = null, note = note, tags = tags)
+                showEditorDialog = false
+            },
+            onAddTag = { viewModel.addTag(it) },
+            onDeleteTag = { viewModel.deleteTag(it) }
         )
     }
 
@@ -73,10 +80,7 @@ fun HistoryScreen(
         }
     }
 
-    // 【修复】显式指定 Map 的 Key 类型为 Int
-    val recordMap: Map<Int, HabitRecord> = remember(selectedRecords) {
-        selectedRecords.associateBy { it.habitId }
-    }
+    val recordMap = remember(selectedRecords) { selectedRecords.associateBy { it.habitId } }
 
     val today = remember { getStartOfDayHistory(System.currentTimeMillis()) }
     val isFutureDate = selectedDate > today
@@ -88,6 +92,7 @@ fun HistoryScreen(
             .padding(16.dp)
     ) {
         Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            // 1. 年度热力图
             Text("年度回顾", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.Black)
             Spacer(modifier = Modifier.height(12.dp))
             Row(
@@ -107,6 +112,7 @@ fun HistoryScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
+            // 2. 月度日历
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -132,6 +138,7 @@ fun HistoryScreen(
             Divider(color = Color(0xFFEEEEEE))
             Spacer(modifier = Modifier.height(16.dp))
 
+            // 3. 历史修改列表
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("历史修改", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.Black)
                 Spacer(modifier = Modifier.width(8.dp))
@@ -141,7 +148,7 @@ fun HistoryScreen(
             if (isFutureDate) {
                 Text("未来日期不可修改", fontSize = 12.sp, color = Color.Red.copy(alpha = 0.6f))
             } else {
-                Text("点击条目切换打卡，长按条目修改备注", fontSize = 12.sp, color = Color.LightGray)
+                Text("点击条目切换打卡，长按条目修改备注/标签", fontSize = 12.sp, color = Color.LightGray)
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -154,6 +161,7 @@ fun HistoryScreen(
                     val record = recordMap[habit.id]
                     val isCompleted = record?.isCompleted == true
                     val note = record?.value
+                    val tags = record?.tags
 
                     Row(
                         modifier = Modifier
@@ -163,17 +171,21 @@ fun HistoryScreen(
                             .combinedClickable(
                                 enabled = !isFutureDate,
                                 onClick = {
+                                    // 点击：切换打卡状态 (保留原有的备注和标签)
                                     viewModel.toggleHabit(habit, dateOverride = selectedDate)
                                 },
                                 onLongClick = {
+                                    // 长按：编辑备注和标签
                                     editingHabit = habit
                                     editingRecordValue = note ?: ""
-                                    showInputDialog = true
+                                    editingRecordTags = tags ?: ""
+                                    showEditorDialog = true
                                 }
                             )
                             .padding(vertical = 12.dp, horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // 打卡状态圆圈
                         Box(
                             modifier = Modifier
                                 .size(16.dp)
@@ -182,16 +194,20 @@ fun HistoryScreen(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
 
+                        // 习惯名称及备注标签
                         Row(verticalAlignment = Alignment.Bottom) {
                             Text(
                                 text = habit.name,
                                 fontSize = 16.sp,
                                 color = if (isCompleted) Color.Black else Color.Gray
                             )
-                            if (!note.isNullOrBlank()) {
+
+                            // 【核心修改】显示标签和备注
+                            val display = if(!tags.isNullOrEmpty()) "🏷️$tags ${note ?: ""}" else note
+                            if (!display.isNullOrEmpty()) {
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = note,
+                                    text = display,
                                     fontSize = 14.sp,
                                     color = Color.Gray,
                                     maxLines = 1,
@@ -212,39 +228,7 @@ fun HistoryScreen(
     }
 }
 
-@Composable
-private fun HistoryNoteInputDialog(
-    initialValue: String,
-    habitType: HabitType,
-    targetValue: String?,
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
-) {
-    var text by remember { mutableStateOf(initialValue) }
-    val keyboardType = if (habitType == HabitType.Numeric) KeyboardType.Number else KeyboardType.Text
-    val label = if (habitType == HabitType.Numeric) "数值 (目标: $targetValue)" else "备注"
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("修改历史备注") },
-        text = {
-            OutlinedTextField(
-                value = text,
-                onValueChange = { text = it },
-                label = { Text(label) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-                modifier = Modifier.fillMaxWidth()
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(text) }) { Text("保存") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
-        }
-    )
-}
+// --- 辅助函数 (保持不变) ---
 
 @Composable
 private fun MonthGridHistory(days: List<Long>, heatmapData: Map<Long, Int>, selectedDate: Long, onDateClick: (Long) -> Unit) {
