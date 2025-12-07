@@ -2,6 +2,8 @@ package com.example.habitick
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -12,6 +14,7 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,16 +26,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.habitick.ui.theme.PrimaryBlue
 
 @Composable
 fun SettingsScreen(
-    onNavigateToVersionHistory: () -> Unit
+    onNavigateToVersionHistory: () -> Unit,
+    viewModel: HabitViewModel = viewModel()
 ) {
     val context = LocalContext.current
     var showDeveloperDialog by remember { mutableStateOf(false) }
 
-    // 【核心修改】动态获取 App 的版本名称
+    // 1. 获取版本号
     val appVersionName = remember {
         try {
             val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
@@ -42,18 +47,33 @@ fun SettingsScreen(
         }
     }
 
+    // 2. 导出/导入 Launcher
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri: Uri? ->
+        uri?.let { viewModel.exportDataToCsv(it) }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { viewModel.importDataFromCsv(it) }
+    }
+
+    // 3. 开发者弹窗
     if (showDeveloperDialog) {
         DeveloperInfoDialog(
             onDismiss = { showDeveloperDialog = false },
             onGithubClick = {
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/YourUsername"))
+                // 这里可以替换成您的真实 GitHub 地址
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Bamlax"))
                 context.startActivity(intent)
             },
             onEmailClick = {
                 val intent = Intent(Intent.ACTION_SENDTO).apply {
-                    data = Uri.parse("mailto:your.email@example.com")
+                    data = Uri.parse("mailto:bamlax@163.com") // 示例邮箱，可修改
                 }
-                context.startActivity(intent)
+                try { context.startActivity(intent) } catch (e: Exception) { }
             }
         )
     }
@@ -64,6 +84,7 @@ fun SettingsScreen(
             .background(Color.White)
             .padding(16.dp)
     ) {
+        // --- 常规设置 ---
         Text(
             text = "常规",
             color = PrimaryBlue,
@@ -72,28 +93,60 @@ fun SettingsScreen(
             modifier = Modifier.padding(vertical = 8.dp)
         )
 
-        // 1. 关于习刻
         FlatSettingItem(
-            icon = Icons.Default.Info,
+            icon = Icons.Filled.Info,
             title = "关于习刻",
-            // 【核心修改】这里使用动态获取的版本变量
             subtitle = "版本 $appVersionName",
             onClick = onNavigateToVersionHistory
         )
 
         Divider(color = Color(0xFFF5F5F5), thickness = 1.dp)
 
-        // 2. 开发者信息
         FlatSettingItem(
-            icon = Icons.Default.Person,
+            icon = Icons.Filled.Person,
             title = "开发者",
-            subtitle = "Bamlax",
+            subtitle = "Bamlax", // 示例名字，可修改
             onClick = { showDeveloperDialog = true }
+        )
+
+        Divider(color = Color(0xFFF5F5F5), thickness = 1.dp)
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // --- 数据备份 ---
+        Text(
+            text = "数据备份",
+            color = PrimaryBlue,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(vertical = 8.dp)
+        )
+
+        FlatSettingItem(
+            icon = Icons.Filled.Settings, // 或者用 Share/Upload 图标
+            title = "导出数据",
+            subtitle = "备份打卡记录 (.csv)",
+            onClick = {
+                exportLauncher.launch("habit_backup_${System.currentTimeMillis()}.csv")
+            }
+        )
+
+        Divider(color = Color(0xFFF5F5F5), thickness = 1.dp)
+
+        FlatSettingItem(
+            icon = Icons.Filled.Settings, // 或者用 Download 图标
+            title = "导入数据",
+            subtitle = "从 CSV 文件恢复",
+            onClick = {
+                importLauncher.launch("text/*") // 限制只能选文本类型
+            }
         )
 
         Divider(color = Color(0xFFF5F5F5), thickness = 1.dp)
     }
 }
+
+// ==================== 通用组件 ====================
 
 @Composable
 fun FlatSettingItem(

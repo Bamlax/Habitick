@@ -40,6 +40,11 @@ data class Habit(
     val color: Color get() = Color(colorValue.toULong())
 }
 
+@Entity(tableName = "tags")
+data class Tag(
+    @PrimaryKey val name: String
+)
+
 @Entity(
     tableName = "habit_records",
     indices = [Index(value = ["habitId", "date"], unique = true)]
@@ -49,39 +54,52 @@ data class HabitRecord(
     val habitId: Int,
     val date: Long,
     val value: String? = null,
-    val isCompleted: Boolean = true
+    val isCompleted: Boolean = true,
+    val tags: String = ""
 )
 
 @Dao
 interface HabitDao {
+    // --- Habit ---
     @Query("SELECT * FROM habits ORDER BY sortIndex ASC")
     fun getAllHabits(): Flow<List<Habit>>
+
+    // 同步获取所有习惯 (用于导出)
+    @Query("SELECT * FROM habits")
+    suspend fun getAllHabitsSync(): List<Habit>
+
+    // 根据名称查找习惯 (用于导入去重)
+    @Query("SELECT * FROM habits WHERE name = :name LIMIT 1")
+    suspend fun getHabitByName(name: String): Habit?
 
     @Query("SELECT MAX(sortIndex) FROM habits")
     suspend fun getMaxSortIndex(): Int?
 
-    // 【新增】实时监听单个习惯的变化 (用于详情页刷新)
     @Query("SELECT * FROM habits WHERE id = :id")
     fun getHabitFlow(id: Int): Flow<Habit>
 
-    @Insert suspend fun insertHabit(habit: Habit)
+    // 【修改】返回 Long (新插入行的 ID)
+    @Insert
+    suspend fun insertHabit(habit: Habit): Long
+
     @Update suspend fun updateHabits(habits: List<Habit>)
     @Update suspend fun updateHabit(habit: Habit)
-
     @Query("DELETE FROM habits WHERE id = :habitId")
     suspend fun deleteHabitById(habitId: Int)
 
+    // --- Record ---
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRecord(record: HabitRecord)
+
+    // 同步获取所有记录 (用于导出)
+    @Query("SELECT * FROM habit_records")
+    suspend fun getAllRecordsSync(): List<HabitRecord>
 
     @Query("DELETE FROM habit_records WHERE habitId = :habitId AND date = :date")
     suspend fun deleteRecord(habitId: Int, date: Long)
 
     @Query("DELETE FROM habit_records WHERE habitId = :habitId")
     suspend fun deleteAllRecordsForHabit(habitId: Int)
-
-    @Query("UPDATE habit_records SET value = :newValue WHERE habitId = :habitId AND date = :date")
-    suspend fun updateRecordValue(habitId: Int, date: Long, newValue: String?)
 
     @Query("SELECT * FROM habit_records WHERE habitId = :habitId AND date = :date")
     suspend fun getRecordForDate(habitId: Int, date: Long): HabitRecord?
@@ -106,11 +124,21 @@ interface HabitDao {
 
     @Query("SELECT * FROM habit_records WHERE habitId = :habitId ORDER BY date ASC")
     fun getRecordsByHabitId(habitId: Int): Flow<List<HabitRecord>>
+
+    // --- Tag ---
+    @Query("SELECT * FROM tags")
+    fun getAllTags(): Flow<List<Tag>>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertTag(tag: Tag)
+
+    @Query("DELETE FROM tags WHERE name = :name")
+    suspend fun deleteTag(name: String)
 }
 
 data class HeatmapEntry(val date: Long, val count: Int)
 
-@Database(entities = [Habit::class, HabitRecord::class], version = 6, exportSchema = false)
+@Database(entities = [Habit::class, HabitRecord::class, Tag::class], version = 7, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class HabitDatabase : RoomDatabase() {
     abstract fun habitDao(): HabitDao

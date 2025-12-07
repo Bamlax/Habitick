@@ -29,9 +29,9 @@ fun TodayScreen(
     onHabitClick: (Habit) -> Unit
 ) {
     val isSorting by viewModel.isSorting.collectAsState()
-
-    // 本地列表 (用于拖拽即时显示)
     val sortingList = remember { mutableStateListOf<HabitUiModel>() }
+    // 【新增】获取所有标签
+    val allTags by viewModel.allTags.collectAsState()
 
     LaunchedEffect(isSorting, habitModels) {
         if (isSorting) {
@@ -40,36 +40,42 @@ fun TodayScreen(
                 sortingList.addAll(habitModels)
             }
         } else {
-            // 退出排序模式时保存
             if (sortingList.isNotEmpty()) {
                 val habitsToSave = sortingList.map { it.habit }
-                viewModel.saveSortOrder(habitsToSave) // 现在这个方法存在了
+                viewModel.saveSortOrder(habitsToSave)
                 sortingList.clear()
             }
         }
     }
 
-    var showValueDialog by remember { mutableStateOf(false) }
+    // 弹窗状态
+    var showEditorDialog by remember { mutableStateOf(false) }
     var currentHabitForDialog by remember { mutableStateOf<Habit?>(null) }
+    var currentNoteForDialog by remember { mutableStateOf("") }
+    var currentTagsForDialog by remember { mutableStateOf("") }
 
-    if (showValueDialog && currentHabitForDialog != null) {
-        ValueInputDialog(
-            habit = currentHabitForDialog!!,
-            onDismiss = { showValueDialog = false },
-            onConfirm = { value ->
-                viewModel.toggleHabit(currentHabitForDialog!!, value)
-                showValueDialog = false
-            }
+    // 【修改】调用通用的 RecordEditorDialog
+    if (showEditorDialog && currentHabitForDialog != null) {
+        RecordEditorDialog(
+            initialNote = currentNoteForDialog,
+            initialTags = currentTagsForDialog,
+            allTags = allTags,
+            habitType = currentHabitForDialog!!.type,
+            targetValue = currentHabitForDialog!!.targetValue,
+            onDismiss = { showEditorDialog = false },
+            onConfirm = { note, tags ->
+                viewModel.toggleHabit(currentHabitForDialog!!, value = note, tags = tags)
+                showEditorDialog = false
+            },
+            onAddTag = { viewModel.addTag(it) },
+            onDeleteTag = { viewModel.deleteTag(it) }
         )
     }
 
     if (isSorting) {
-        // 排序模式
         DraggableLazyColumn(
             items = sortingList,
-            onSwap = { from, to ->
-                sortingList.apply { add(to, removeAt(from)) }
-            }
+            onSwap = { from, to -> viewModel.onSortSwap(from, to) }
         ) { model, isDragging ->
             val habit = model.habit
             HabitItemRow(
@@ -83,7 +89,6 @@ fun TodayScreen(
             )
         }
     } else {
-        // 正常模式
         LazyColumn(
             modifier = Modifier.fillMaxSize().background(Color.White),
             contentPadding = PaddingValues(0.dp)
@@ -97,8 +102,11 @@ fun TodayScreen(
                     isDragging = false,
                     onHabitClick = { onHabitClick(model.habit) },
                     onLongClick = {
+                        // 长按编辑
                         currentHabitForDialog = model.habit
-                        showValueDialog = true
+                        currentNoteForDialog = model.todayNote ?: ""
+                        currentTagsForDialog = model.todayTags ?: ""
+                        showEditorDialog = true
                     },
                     onCheck = { viewModel.toggleHabit(model.habit) }
                 )
@@ -125,7 +133,7 @@ fun HabitItemRow(
         modifier = Modifier
             .fillMaxWidth()
             .height(72.dp)
-            .background(Color.White) // 始终白色背景
+            .background(Color.White)
             .combinedClickable(
                 enabled = !isSorting,
                 onClick = onHabitClick,
@@ -150,10 +158,15 @@ fun HabitItemRow(
                     fontWeight = FontWeight.Medium
                 )
 
-                if (!model.todayNote.isNullOrBlank()) {
+                // 显示备注和标签
+                val note = model.todayNote ?: ""
+                val tags = model.todayTags ?: ""
+                val display = if(tags.isNotEmpty()) "🏷️$tags $note" else note
+
+                if (display.isNotBlank()) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = model.todayNote,
+                        text = display,
                         fontSize = 14.sp,
                         color = Color.Gray,
                         maxLines = 1,
