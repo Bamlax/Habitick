@@ -41,7 +41,8 @@ fun HistoryScreen(
     val selectedRecords by viewModel.selectedDateRecords.collectAsState()
     val currentViewingMonth by viewModel.currentViewingMonth.collectAsState()
     val allHabits by viewModel.habits.collectAsState()
-    val allTags by viewModel.allTags.collectAsState()
+    // 【核心】监听分组标签
+    val tagsMap by viewModel.tagsMap.collectAsState()
 
     val monthDays = remember(currentViewingMonth) { generateDaysForMonthHistory(currentViewingMonth) }
     val oneYearAgoStart = remember { getOneYearAgoStartHistory() }
@@ -52,10 +53,13 @@ fun HistoryScreen(
     var editingRecordTags by remember { mutableStateOf("") }
 
     if (showInputDialog && editingHabit != null) {
+        val habitId = editingHabit!!.id
+        val currentHabitTags = tagsMap[habitId] ?: emptyList()
+
         RecordEditorDialog(
             initialNote = editingRecordValue,
             initialTags = editingRecordTags,
-            allTags = allTags,
+            allTags = currentHabitTags,
             habitType = editingHabit!!.type,
             targetValue = editingHabit!!.targetValue,
             onDismiss = { showInputDialog = false },
@@ -63,8 +67,8 @@ fun HistoryScreen(
                 viewModel.updateRecord(editingHabit!!, selectedDate, isCompleted = null, note = note, tags = tags)
                 showInputDialog = false
             },
-            onAddTag = { viewModel.addTag(it) },
-            onDeleteTag = { viewModel.deleteTag(it) }
+            onAddTag = { viewModel.addTag(habitId, it) },
+            onDeleteTag = { viewModel.deleteTag(habitId, it) }
         )
     }
 
@@ -92,10 +96,7 @@ fun HistoryScreen(
         Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             Text("年度回顾", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.Black)
             Spacer(modifier = Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 repeat(52) { weekIndex ->
                     Column(verticalArrangement = Arrangement.spacedBy(1.5.dp)) {
                         repeat(7) { dayIndex ->
@@ -109,11 +110,7 @@ fun HistoryScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("本月详情", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.Black)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { viewModel.changeMonth(-1) }) { Icon(Icons.Filled.KeyboardArrowLeft, null) }
@@ -123,12 +120,7 @@ fun HistoryScreen(
             }
             Spacer(modifier = Modifier.height(8.dp))
 
-            MonthGridHistory(
-                days = monthDays,
-                heatmapData = heatmapData,
-                selectedDate = selectedDate,
-                onDateClick = { viewModel.selectDate(it) }
-            )
+            MonthGridHistory(days = monthDays, heatmapData = heatmapData, selectedDate = selectedDate, onDateClick = { viewModel.selectDate(it) })
 
             Spacer(modifier = Modifier.height(24.dp))
             Divider(color = Color(0xFFEEEEEE))
@@ -165,9 +157,7 @@ fun HistoryScreen(
                             .alpha(if (isFutureDate) 0.5f else 1f)
                             .combinedClickable(
                                 enabled = !isFutureDate,
-                                onClick = {
-                                    viewModel.toggleHabit(habit, dateOverride = selectedDate)
-                                },
+                                onClick = { viewModel.toggleHabit(habit, dateOverride = selectedDate) },
                                 onLongClick = {
                                     editingHabit = habit
                                     editingRecordValue = note
@@ -178,56 +168,25 @@ fun HistoryScreen(
                             .padding(vertical = 12.dp, horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(16.dp)
-                                .background(if (isCompleted) PrimaryBlue else Color.Transparent, CircleShape)
-                                .border(1.dp, if (isCompleted) PrimaryBlue else Color.LightGray, CircleShape)
-                        )
+                        Box(modifier = Modifier.size(16.dp).background(if (isCompleted) PrimaryBlue else Color.Transparent, CircleShape).border(1.dp, if (isCompleted) PrimaryBlue else Color.LightGray, CircleShape))
                         Spacer(modifier = Modifier.width(12.dp))
 
                         Column(modifier = Modifier.weight(1f)) {
-                            // 【修改】第一行：名称 + 备注
                             Row(verticalAlignment = Alignment.Bottom) {
-                                Text(
-                                    text = habit.name,
-                                    fontSize = 18.sp, // 【字号加大】
-                                    color = if (isCompleted) Color.Black else Color.Gray,
-                                    fontWeight = FontWeight.Medium
-                                )
-
+                                Text(text = habit.name, fontSize = 16.sp, color = if (isCompleted) Color.Black else Color.Gray, fontWeight = FontWeight.Medium)
                                 if (note.isNotBlank()) {
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = note,
-                                        fontSize = 14.sp, // 【字号中等】
-                                        color = Color.Gray,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.padding(bottom = 1.dp)
-                                    )
+                                    Text(text = note, fontSize = 14.sp, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(bottom = 1.dp))
                                 }
                             }
 
-                            // 【修改】第二行：标签 (蓝色小块)
                             if (tags.isNotBlank()) {
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Row(
-                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
+                                Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                     tags.split(",").forEach { tag ->
                                         if (tag.isNotBlank()) {
-                                            Surface(
-                                                color = PrimaryBlue.copy(alpha = 0.1f),
-                                                shape = RoundedCornerShape(4.dp),
-                                            ) {
-                                                Text(
-                                                    text = tag,
-                                                    color = PrimaryBlue,
-                                                    fontSize = 10.sp, // 【字号较小】
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                )
+                                            Surface(color = PrimaryBlue.copy(alpha = 0.1f), shape = RoundedCornerShape(4.dp)) {
+                                                Text(text = tag, color = PrimaryBlue, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                                             }
                                         }
                                     }
@@ -236,9 +195,7 @@ fun HistoryScreen(
                         }
 
                         Spacer(modifier = Modifier.width(8.dp))
-                        if (isCompleted) {
-                            Text("已完成", fontSize = 12.sp, color = PrimaryBlue)
-                        }
+                        if (isCompleted) { Text("已完成", fontSize = 12.sp, color = PrimaryBlue) }
                     }
                     Divider(color = Color(0xFFF5F5F5))
                 }
@@ -247,85 +204,13 @@ fun HistoryScreen(
     }
 }
 
-// --- 辅助函数 ---
-
-@Composable
-private fun MonthGridHistory(days: List<Long>, heatmapData: Map<Long, Int>, selectedDate: Long, onDateClick: (Long) -> Unit) {
-    val columns = 7
-    val rows = (days.size + columns - 1) / columns
-    Column {
-        for (r in 0 until rows) {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                for (c in 0 until columns) {
-                    val index = r * columns + c
-                    if (index < days.size) {
-                        val date = days[index]
-                        val count = heatmapData[date] ?: 0
-                        val isSelected = selectedDate == date
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .background(calculateColorHistory(count), RoundedCornerShape(4.dp))
-                                .border(if (isSelected) 2.dp else 0.dp, if (isSelected) Color.Black else Color.Transparent, RoundedCornerShape(4.dp))
-                                .clickable { onDateClick(date) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(getDayOfMonthHistory(date), fontSize = 12.sp, color = if (count > 3) Color.White else Color.Gray)
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(6.dp))
-                }
-            }
-            Spacer(modifier = Modifier.height(6.dp))
-        }
-    }
-}
-
-private fun getStartOfDayHistory(timestamp: Long): Long {
-    val cal = Calendar.getInstance()
-    cal.timeInMillis = timestamp
-    cal.set(Calendar.HOUR_OF_DAY, 0); cal.set(Calendar.MINUTE, 0); cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0)
-    return cal.timeInMillis
-}
-
-private fun calculateColorHistory(count: Int): Color {
-    return if (count == 0) Color(0xFFF0F0F0)
-    else PrimaryBlue.copy(alpha = (0.2f + count * 0.15f).coerceAtMost(1.0f))
-}
-
+// ... 辅助函数 MonthGridHistory 等 ...
+@Composable private fun MonthGridHistory(days: List<Long>, heatmapData: Map<Long, Int>, selectedDate: Long, onDateClick: (Long) -> Unit) { val columns = 7; val rows = (days.size + columns - 1) / columns; Column { for (r in 0 until rows) { Row(modifier = Modifier.fillMaxWidth()) { for (c in 0 until columns) { val index = r * columns + c; if (index < days.size) { val date = days[index]; val count = heatmapData[date] ?: 0; val isSelected = selectedDate == date; Box(modifier = Modifier.size(40.dp).background(calculateColorHistory(count), RoundedCornerShape(4.dp)).border(if (isSelected) 2.dp else 0.dp, if (isSelected) Color.Black else Color.Transparent, RoundedCornerShape(4.dp)).clickable { onDateClick(date) }, contentAlignment = Alignment.Center) { Text(getDayOfMonthHistory(date), fontSize = 12.sp, color = if (count > 3) Color.White else Color.Gray) } } else { Spacer(modifier = Modifier.width(40.dp)) } ; Spacer(modifier = Modifier.width(6.dp)) } }; Spacer(modifier = Modifier.height(6.dp)) } } }
+private fun getStartOfDayHistory(timestamp: Long): Long { val cal = Calendar.getInstance(); cal.timeInMillis = timestamp; cal.set(Calendar.HOUR_OF_DAY, 0); cal.set(Calendar.MINUTE, 0); cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0); return cal.timeInMillis }
+private fun calculateColorHistory(count: Int): Color = if (count == 0) Color(0xFFF0F0F0) else PrimaryBlue.copy(alpha = (0.2f + count * 0.15f).coerceAtMost(1.0f))
 private fun formatDateHistory(timestamp: Long): String = SimpleDateFormat("MM月dd日", Locale.CHINA).format(Date(timestamp))
 private fun formatMonthHistory(timestamp: Long): String = SimpleDateFormat("yyyy年MM月", Locale.CHINA).format(Date(timestamp))
-
-private fun getDayOfMonthHistory(timestamp: Long): String {
-    val cal = Calendar.getInstance()
-    cal.timeInMillis = timestamp
-    return cal.get(Calendar.DAY_OF_MONTH).toString()
-}
-
-private fun calculateDateForYearGridHistory(start: Long, weekIndex: Int, dayIndex: Int): Long {
-    val cal = Calendar.getInstance()
-    cal.timeInMillis = start
-    cal.add(Calendar.DAY_OF_YEAR, (weekIndex * 7) + dayIndex)
-    return cal.timeInMillis
-}
-
-private fun getOneYearAgoStartHistory(): Long {
-    val cal = Calendar.getInstance()
-    cal.set(Calendar.HOUR_OF_DAY, 0); cal.set(Calendar.MINUTE, 0); cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0)
-    cal.add(Calendar.WEEK_OF_YEAR, -52)
-    cal.set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
-    return cal.timeInMillis
-}
-
-private fun generateDaysForMonthHistory(monthStart: Long): List<Long> {
-    val list = mutableListOf<Long>()
-    val calendar = Calendar.getInstance()
-    calendar.timeInMillis = monthStart
-
-    val maxDay = calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
-    for (i in 1..maxDay) {
-        list.add(calendar.timeInMillis)
-        calendar.add(Calendar.DAY_OF_YEAR, 1)
-    }
-    return list
-}
+private fun getDayOfMonthHistory(timestamp: Long): String { val cal = Calendar.getInstance(); cal.timeInMillis = timestamp; return cal.get(Calendar.DAY_OF_MONTH).toString() }
+private fun calculateDateForYearGridHistory(start: Long, weekIndex: Int, dayIndex: Int): Long { val cal = Calendar.getInstance(); cal.timeInMillis = start; cal.add(Calendar.DAY_OF_YEAR, (weekIndex * 7) + dayIndex); return cal.timeInMillis }
+private fun getOneYearAgoStartHistory(): Long { val cal = Calendar.getInstance(); cal.set(Calendar.HOUR_OF_DAY, 0); cal.set(Calendar.MINUTE, 0); cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0); cal.add(Calendar.WEEK_OF_YEAR, -52); cal.set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY); return cal.timeInMillis }
+private fun generateDaysForMonthHistory(monthStart: Long): List<Long> { val list = mutableListOf<Long>(); val calendar = Calendar.getInstance(); calendar.timeInMillis = monthStart; val maxDay = calendar.getActualMaximum(Calendar.DAY_OF_MONTH); for (i in 1..maxDay) { list.add(calendar.timeInMillis); calendar.add(Calendar.DAY_OF_YEAR, 1) }; return list }

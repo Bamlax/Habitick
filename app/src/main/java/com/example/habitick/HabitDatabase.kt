@@ -40,9 +40,15 @@ data class Habit(
     val color: Color get() = Color(colorValue.toULong())
 }
 
-@Entity(tableName = "tags")
+// 【修改】标签表：增加 habitId，主键改为组合键
+@Entity(
+    tableName = "tags",
+    primaryKeys = ["name", "habitId"],
+    indices = [Index(value = ["habitId"])]
+)
 data class Tag(
-    @PrimaryKey val name: String
+    val name: String,
+    val habitId: Int // 标签归属于某个习惯
 )
 
 @Entity(
@@ -64,11 +70,9 @@ interface HabitDao {
     @Query("SELECT * FROM habits ORDER BY sortIndex ASC")
     fun getAllHabits(): Flow<List<Habit>>
 
-    // 同步获取所有习惯 (用于导出)
     @Query("SELECT * FROM habits")
     suspend fun getAllHabitsSync(): List<Habit>
 
-    // 根据名称查找习惯 (用于导入去重)
     @Query("SELECT * FROM habits WHERE name = :name LIMIT 1")
     suspend fun getHabitByName(name: String): Habit?
 
@@ -78,7 +82,6 @@ interface HabitDao {
     @Query("SELECT * FROM habits WHERE id = :id")
     fun getHabitFlow(id: Int): Flow<Habit>
 
-    // 【修改】返回 Long (新插入行的 ID)
     @Insert
     suspend fun insertHabit(habit: Habit): Long
 
@@ -91,7 +94,6 @@ interface HabitDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRecord(record: HabitRecord)
 
-    // 同步获取所有记录 (用于导出)
     @Query("SELECT * FROM habit_records")
     suspend fun getAllRecordsSync(): List<HabitRecord>
 
@@ -126,19 +128,28 @@ interface HabitDao {
     fun getRecordsByHabitId(habitId: Int): Flow<List<HabitRecord>>
 
     // --- Tag ---
+    // 获取所有标签，后续在内存中按 habitId 分组
     @Query("SELECT * FROM tags")
     fun getAllTags(): Flow<List<Tag>>
+
+    @Query("SELECT * FROM tags")
+    suspend fun getAllTagsSync(): List<Tag>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertTag(tag: Tag)
 
-    @Query("DELETE FROM tags WHERE name = :name")
-    suspend fun deleteTag(name: String)
+    // 删除指定习惯下的指定标签
+    @Query("DELETE FROM tags WHERE name = :name AND habitId = :habitId")
+    suspend fun deleteTag(name: String, habitId: Int)
+
+    @Query("DELETE FROM tags WHERE habitId = :habitId")
+    suspend fun deleteAllTagsForHabit(habitId: Int)
 }
 
 data class HeatmapEntry(val date: Long, val count: Int)
 
-@Database(entities = [Habit::class, HabitRecord::class, Tag::class], version = 7, exportSchema = false)
+// 【升级】版本号 8
+@Database(entities = [Habit::class, HabitRecord::class, Tag::class], version = 8, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class HabitDatabase : RoomDatabase() {
     abstract fun habitDao(): HabitDao

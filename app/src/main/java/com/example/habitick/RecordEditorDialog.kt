@@ -1,8 +1,8 @@
 package com.example.habitick
 
-import androidx.compose.foundation.ExperimentalFoundationApi // 【修复】补上这个关键导包
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -92,7 +92,9 @@ fun RecordEditorDialog(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
+                // 标签区域
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // 【修改】去掉了 (长按删除) 的提示
                     Text("标签", style = MaterialTheme.typography.titleMedium, color = Color.Gray)
                     Spacer(modifier = Modifier.width(8.dp))
                     IconButton(
@@ -110,29 +112,29 @@ fun RecordEditorDialog(
                 ) {
                     items(allTags) { tag ->
                         val isSelected = selectedTags.contains(tag.name)
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = {
-                                if (isSelected) selectedTags.remove(tag.name)
-                                else selectedTags.add(tag.name)
-                            },
-                            label = { Text(tag.name) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = PrimaryBlue,
-                                selectedLabelColor = Color.White,
-                                containerColor = Color(0xFFF5F5F5)
-                            ),
-                            modifier = Modifier.combinedClickable(
-                                onClick = {
-                                    if (isSelected) selectedTags.remove(tag.name)
-                                    else selectedTags.add(tag.name)
-                                },
-                                onLongClick = {
-                                    onDeleteTag(tag.name)
-                                    selectedTags.remove(tag.name)
-                                }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) PrimaryBlue else Color(0xFFF5F5F5),
+                            border = if (isSelected) null else BorderStroke(1.dp, Color.LightGray),
+                            modifier = Modifier
+                                .combinedClickable(
+                                    onClick = {
+                                        if (isSelected) selectedTags.remove(tag.name)
+                                        else selectedTags.add(tag.name)
+                                    },
+                                    onLongClick = {
+                                        onDeleteTag(tag.name)
+                                        selectedTags.remove(tag.name)
+                                    }
+                                )
+                        ) {
+                            Text(
+                                text = tag.name,
+                                color = if (isSelected) Color.White else Color.Black,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                             )
-                        )
+                        }
                     }
                 }
 

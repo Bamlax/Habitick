@@ -31,29 +31,30 @@ fun TodayScreen(
     onHabitClick: (Habit) -> Unit
 ) {
     val isSorting by viewModel.isSorting.collectAsState()
-    val allTags by viewModel.allTags.collectAsState()
+    // 【核心】监听分组后的标签
+    val tagsMap by viewModel.tagsMap.collectAsState()
 
-    // 弹窗状态
     var showEditorDialog by remember { mutableStateOf(false) }
-    var currentHabitForDialog by remember { mutableStateOf<Habit?>(null) }
-    var currentNoteForDialog by remember { mutableStateOf("") }
-    var currentTagsForDialog by remember { mutableStateOf("") }
+    var currentHabitUiModel by remember { mutableStateOf<HabitUiModel?>(null) }
 
-    // 通用记录编辑器
-    if (showEditorDialog && currentHabitForDialog != null) {
+    if (showEditorDialog && currentHabitUiModel != null) {
+        val habit = currentHabitUiModel!!.habit
+        // 【核心】只传当前习惯的标签
+        val currentHabitTags = tagsMap[habit.id] ?: emptyList()
+
         RecordEditorDialog(
-            initialNote = currentNoteForDialog,
-            initialTags = currentTagsForDialog,
-            allTags = allTags,
-            habitType = currentHabitForDialog!!.type,
-            targetValue = currentHabitForDialog!!.targetValue,
+            initialNote = currentHabitUiModel!!.todayNote ?: "",
+            initialTags = currentHabitUiModel!!.todayTags ?: "",
+            allTags = currentHabitTags,
+            habitType = habit.type,
+            targetValue = habit.targetValue,
             onDismiss = { showEditorDialog = false },
             onConfirm = { note, tags ->
-                viewModel.toggleHabit(currentHabitForDialog!!, value = note, tags = tags)
+                viewModel.toggleHabit(habit, value = note, tags = tags)
                 showEditorDialog = false
             },
-            onAddTag = { viewModel.addTag(it) },
-            onDeleteTag = { viewModel.deleteTag(it) }
+            onAddTag = { tagName -> viewModel.addTag(habit.id, tagName) },
+            onDeleteTag = { tagName -> viewModel.deleteTag(habit.id, tagName) }
         )
     }
 
@@ -61,13 +62,10 @@ fun TodayScreen(
         DraggableLazyColumn(
             items = viewModel.sortingList,
             onSwap = { from, to -> viewModel.onSortSwap(from, to) },
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.White)
+            modifier = Modifier.fillMaxSize().background(Color.White)
         ) { model, isDragging ->
-            val habit = model.habit
             HabitItemRow(
-                habit = habit,
+                habit = model.habit,
                 model = model,
                 isSorting = true,
                 isDragging = isDragging,
@@ -78,9 +76,7 @@ fun TodayScreen(
         }
     } else {
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.White),
+            modifier = Modifier.fillMaxSize().background(Color.White),
             contentPadding = PaddingValues(0.dp)
         ) {
             items(habitModels.size) { index ->
@@ -92,10 +88,7 @@ fun TodayScreen(
                     isDragging = false,
                     onHabitClick = { onHabitClick(model.habit) },
                     onLongClick = {
-                        // 长按编辑
-                        currentHabitForDialog = model.habit
-                        currentNoteForDialog = model.todayNote ?: ""
-                        currentTagsForDialog = model.todayTags ?: ""
+                        currentHabitUiModel = model
                         showEditorDialog = true
                     },
                     onCheck = { viewModel.toggleHabit(model.habit) }
@@ -138,36 +131,33 @@ fun HabitItemRow(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.Center
         ) {
-            // 【修改】第一行：名称 + 备注
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     text = habit.name,
-                    fontSize = 18.sp, // 【字号加大】
+                    fontSize = 18.sp,
                     color = if (habit.isCompleted && !isSorting) Color.Gray else habit.color,
                     textDecoration = if (habit.isCompleted && !isSorting) TextDecoration.LineThrough else null,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     fontWeight = FontWeight.Medium
                 )
-
                 val note = model.todayNote ?: ""
                 if (note.isNotBlank()) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = note,
-                        fontSize = 14.sp, // 【字号中等】
+                        fontSize = 14.sp,
                         color = Color.Gray,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(bottom = 1.dp) // 微调对齐
+                        modifier = Modifier.padding(bottom = 1.dp)
                     )
                 }
             }
 
-            // 【修改】第二行：标签 (蓝色小块)
             val tags = model.todayTags ?: ""
             if (tags.isNotBlank()) {
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -181,7 +171,7 @@ fun HabitItemRow(
                                 Text(
                                     text = tag,
                                     color = PrimaryBlue,
-                                    fontSize = 10.sp, // 【字号较小】
+                                    fontSize = 10.sp,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
@@ -191,7 +181,6 @@ fun HabitItemRow(
             }
         }
 
-        // 右侧操作区 (保持不变)
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (!isSorting && model.currentStreak >= 2) {
                 StreakTag(streak = model.currentStreak)

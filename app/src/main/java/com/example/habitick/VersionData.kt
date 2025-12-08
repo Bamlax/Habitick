@@ -9,6 +9,15 @@ data class VersionInfo(
 
 val versionHistory = listOf(
     VersionInfo(
+        version = "0.4.2",
+        date = "2025-12-7",
+        changes = listOf(
+            "修复标签无法删除的bug",
+            "优化标签对于习惯的唯一性判定",
+            "优化数据库导出逻辑",
+        )
+    ),
+    VersionInfo(
         version = "0.4.1",
         date = "2025-12-7",
         changes = listOf(
