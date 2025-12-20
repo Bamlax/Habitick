@@ -542,12 +542,18 @@ fun TagPieChart(records: List<HabitRecord>) {
         Text("标签分布", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(16.dp))
 
+        // 【修改点】增加了高度到 160dp，让滑动区域更舒适
         Row(
-            modifier = Modifier.fillMaxWidth().height(150.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(160.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // 左侧：饼图区域
             Box(
-                modifier = Modifier.weight(1f).aspectRatio(1f),
+                modifier = Modifier
+                    .weight(0.8f) // 调整权重，给饼图留 45% 左右空间
+                    .aspectRatio(1f),
                 contentAlignment = Alignment.Center
             ) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
@@ -564,13 +570,31 @@ fun TagPieChart(records: List<HabitRecord>) {
                     }
                 }
             }
+
             Spacer(modifier = Modifier.width(24.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                tags.forEachIndexed { index, tag ->
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
-                        Box(modifier = Modifier.size(12.dp).background(colors[index], CircleShape))
+
+            // 【修改点】右侧：改为 LazyColumn 实现滑动，并调整布局更紧凑
+            androidx.compose.foundation.lazy.LazyColumn(
+                modifier = Modifier
+                    .weight(1.2f) // 给列表留更多一点的宽度
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.spacedBy(2.dp) // 【修改点】列表间距缩小到 2dp
+            ) {
+                items(tags.size) { index ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(vertical = 2.dp) // 【修改点】单项垂直内边距缩小
+                    ) {
+                        // 【修改点】圆点缩小到 10dp
+                        Box(modifier = Modifier.size(10.dp).background(colors[index], CircleShape))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("$tag (${counts[index]})", fontSize = 12.sp, color = Color.Gray)
+                        Text(
+                            text = "${tags[index]} (${counts[index]})",
+                            fontSize = 12.sp,
+                            color = Color.Gray,
+                            maxLines = 1, // 防止文字过长换行破坏紧凑感
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
             }

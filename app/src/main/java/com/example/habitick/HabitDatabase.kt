@@ -40,7 +40,7 @@ data class Habit(
     val color: Color get() = Color(colorValue.toULong())
 }
 
-// 【修改】标签表：增加 habitId，主键改为组合键
+// 【修改 1】Tag 实体增加 lastUsed 字段，默认为创建时间
 @Entity(
     tableName = "tags",
     primaryKeys = ["name", "habitId"],
@@ -48,7 +48,8 @@ data class Habit(
 )
 data class Tag(
     val name: String,
-    val habitId: Int // 标签归属于某个习惯
+    val habitId: Int,
+    val lastUsed: Long = System.currentTimeMillis() // 新增字段
 )
 
 @Entity(
@@ -128,8 +129,8 @@ interface HabitDao {
     fun getRecordsByHabitId(habitId: Int): Flow<List<HabitRecord>>
 
     // --- Tag ---
-    // 获取所有标签，后续在内存中按 habitId 分组
-    @Query("SELECT * FROM tags")
+    // 【修改 2】查询时按 lastUsed 倒序排列（最近使用的排前面）
+    @Query("SELECT * FROM tags ORDER BY lastUsed DESC")
     fun getAllTags(): Flow<List<Tag>>
 
     @Query("SELECT * FROM tags")
@@ -138,7 +139,10 @@ interface HabitDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertTag(tag: Tag)
 
-    // 删除指定习惯下的指定标签
+    // 【修改 3】新增：更新标签的使用时间
+    @Query("UPDATE tags SET lastUsed = :timestamp WHERE name = :name AND habitId = :habitId")
+    suspend fun updateTagUsage(name: String, habitId: Int, timestamp: Long)
+
     @Query("DELETE FROM tags WHERE name = :name AND habitId = :habitId")
     suspend fun deleteTag(name: String, habitId: Int)
 
@@ -148,8 +152,8 @@ interface HabitDao {
 
 data class HeatmapEntry(val date: Long, val count: Int)
 
-// 【升级】版本号 8
-@Database(entities = [Habit::class, HabitRecord::class, Tag::class], version = 8, exportSchema = false)
+// 【修改 4】数据库版本号升级到 9
+@Database(entities = [Habit::class, HabitRecord::class, Tag::class], version = 9, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class HabitDatabase : RoomDatabase() {
     abstract fun habitDao(): HabitDao
@@ -159,7 +163,7 @@ abstract class HabitDatabase : RoomDatabase() {
         fun getDatabase(context: Context): HabitDatabase {
             return Instance ?: synchronized(this) {
                 Room.databaseBuilder(context, HabitDatabase::class.java, "habit_database")
-                    .fallbackToDestructiveMigration()
+                    .fallbackToDestructiveMigration() // 注意：版本升级会清除旧数据，除非自己写 migration
                     .build().also { Instance = it }
             }
         }

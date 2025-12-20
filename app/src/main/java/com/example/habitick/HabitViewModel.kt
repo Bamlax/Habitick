@@ -38,7 +38,7 @@ class HabitViewModel(application: Application) : AndroidViewModel(application) {
 
     private val allRecordsFlow = dao.getAllRecords()
 
-    // 标签流
+    // 标签流 (DAO中已按 lastUsed 倒序排列)
     private val allTagsFlow: Flow<List<Tag>> = dao.getAllTags()
 
     // 按 habitId 分组的标签 Map
@@ -51,6 +51,7 @@ class HabitViewModel(application: Application) : AndroidViewModel(application) {
     val sortingList = mutableStateListOf<HabitUiModel>()
 
     // 合并数据生成 UI Model
+    // 【修复：解决跨天显示已打卡的问题】
     val homeUiState: StateFlow<List<HabitUiModel>> = combine(habits, allRecordsFlow, tagsMap) { habitList, records, tagsMap ->
         val today = getTodayZero()
         habitList.map { habit ->
@@ -58,8 +59,16 @@ class HabitViewModel(application: Application) : AndroidViewModel(application) {
             val todayRecord = habitRecords.find { it.date == today }
             val streak = calculateStreakForHabit(habitRecords, today)
 
+            // 即使数据库 habit 表里的 isCompleted 是 true（可能是昨天打的卡），
+            // 如果今天没有 todayRecord 或者 todayRecord.isCompleted 是 false，
+            // 那么在 UI 上它就必须是 false。
+            val isCompletedToday = todayRecord?.isCompleted == true
+
+            // 使用 copy 创建一个新的 Habit 对象传给 UI，覆盖数据库中旧的 isCompleted 状态
+            val displayHabit = habit.copy(isCompleted = isCompletedToday)
+
             HabitUiModel(
-                habit = habit,
+                habit = displayHabit,
                 todayNote = todayRecord?.value,
                 currentStreak = streak,
                 todayTags = todayRecord?.tags,
@@ -98,6 +107,19 @@ class HabitViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { dao.deleteTag(name = tagName, habitId = habitId) }
     }
 
+    // 【新增：批量更新标签的使用时间】
+    private fun updateTagsTimestamp(habitId: Int, tagsStr: String) {
+        if (tagsStr.isBlank()) return
+        val timestamp = System.currentTimeMillis()
+        viewModelScope.launch {
+            tagsStr.split(",").forEach { tagName ->
+                if (tagName.isNotBlank()) {
+                    dao.updateTagUsage(tagName, habitId, timestamp)
+                }
+            }
+        }
+    }
+
     // --- 记录操作 ---
 
     fun updateRecord(habit: Habit, date: Long, isCompleted: Boolean?, note: String?, tags: String? = null) {
@@ -109,7 +131,14 @@ class HabitViewModel(application: Application) : AndroidViewModel(application) {
             val newNote = if (note !== null) note else oldRecord?.value
             val newTags = if (tags !== null) tags else oldRecord?.tags ?: ""
 
+            // 【功能：更新标签最后使用时间】
+            // 如果 tags 不为 null，说明是用户在编辑弹窗点击了保存，此时更新这些标签的时间
+            if (tags != null) {
+                updateTagsTimestamp(habit.id, newTags)
+            }
+
             if (isToday && isCompleted != null) {
+                // 更新 Habit 表状态 (保持数据一致性)
                 dao.updateHabit(habit.copy(isCompleted = newCompleted))
             }
 
@@ -297,19 +326,15 @@ class HabitViewModel(application: Application) : AndroidViewModel(application) {
     fun cancelSort() { _isSorting.value = false }
     fun saveSortOrder(newHabits: List<Habit>) { viewModelScope.launch { val updates = newHabits.mapIndexed { index, habit -> habit.copy(sortIndex = index) }; dao.updateHabits(updates) } }
 
-    // --- 【修复】补全缺失的 CRUD 方法 ---
     fun getHabitFlow(habitId: Int): Flow<Habit> = dao.getHabitFlow(habitId)
     fun getHabitRecords(habitId: Int): StateFlow<List<HabitRecord>> = dao.getRecordsByHabitId(habitId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     fun updateHabitDetails(habit: Habit) { viewModelScope.launch { dao.updateHabit(habit) } }
 
-    // 修复：HistoryScreen 需要这些方法
     fun selectDate(date: Long) { _selectedDate.value = date }
     fun changeMonth(amount: Int) { val c = Calendar.getInstance(); c.timeInMillis = _currentViewingMonth.value; c.add(Calendar.MONTH, amount); _currentViewingMonth.value = c.timeInMillis }
 
-    // 修复：AddHabitScreen 需要
     fun addHabit(name: String, color: Color, type: HabitType, startDate: Long, endDate: Long?, frequency: String, targetValue: String?) { viewModelScope.launch { val maxIndex = dao.getMaxSortIndex() ?: 0; dao.insertHabit(Habit(name = name, colorValue = color.value.toLong(), isCompleted = false, type = type, startDate = startDate, endDate = endDate, frequency = frequency, targetValue = targetValue, sortIndex = maxIndex + 1)) } }
 
-    // 修复：HabitDetailScreen 和 MainScreen 需要
     fun deleteHabit(habit: Habit) { viewModelScope.launch { dao.deleteAllRecordsForHabit(habit.id); dao.deleteHabitById(habit.id) } }
 
     private fun calculateStreakForHabit(records: List<HabitRecord>, today: Long): Int {
@@ -322,6 +347,23 @@ class HabitViewModel(application: Application) : AndroidViewModel(application) {
         while (dates.contains(checkDate)) { streak++; checkDate -= 24 * 3600 * 1000 }
         return streak
     }
-    private fun getTodayZero(): Long { val c = Calendar.getInstance(); c.set(Calendar.HOUR_OF_DAY, 0); c.set(Calendar.MINUTE, 0); c.set(Calendar.SECOND, 0); c.set(Calendar.MILLISECOND, 0); return c.timeInMillis }
-    private fun getStartOfCurrentMonth(): Long { val c = Calendar.getInstance(); c.set(Calendar.DAY_OF_MONTH, 1); c.set(Calendar.HOUR_OF_DAY, 0); c.set(Calendar.MINUTE, 0); c.set(Calendar.SECOND, 0); c.set(Calendar.MILLISECOND, 0); return c.timeInMillis }
+
+    private fun getTodayZero(): Long {
+        val c = Calendar.getInstance()
+        c.set(Calendar.HOUR_OF_DAY, 0)
+        c.set(Calendar.MINUTE, 0)
+        c.set(Calendar.SECOND, 0)
+        c.set(Calendar.MILLISECOND, 0)
+        return c.timeInMillis
+    }
+
+    private fun getStartOfCurrentMonth(): Long {
+        val c = Calendar.getInstance()
+        c.set(Calendar.DAY_OF_MONTH, 1)
+        c.set(Calendar.HOUR_OF_DAY, 0)
+        c.set(Calendar.MINUTE, 0)
+        c.set(Calendar.SECOND, 0)
+        c.set(Calendar.MILLISECOND, 0)
+        return c.timeInMillis
+    }
 }
