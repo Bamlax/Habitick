@@ -51,7 +51,6 @@ class HabitViewModel(application: Application) : AndroidViewModel(application) {
     val sortingList = mutableStateListOf<HabitUiModel>()
 
     // 合并数据生成 UI Model
-    // 【修复：解决跨天显示已打卡的问题】
     val homeUiState: StateFlow<List<HabitUiModel>> = combine(habits, allRecordsFlow, tagsMap) { habitList, records, tagsMap ->
         val today = getTodayZero()
         habitList.map { habit ->
@@ -59,12 +58,10 @@ class HabitViewModel(application: Application) : AndroidViewModel(application) {
             val todayRecord = habitRecords.find { it.date == today }
             val streak = calculateStreakForHabit(habitRecords, today)
 
-            // 即使数据库 habit 表里的 isCompleted 是 true（可能是昨天打的卡），
-            // 如果今天没有 todayRecord 或者 todayRecord.isCompleted 是 false，
-            // 那么在 UI 上它就必须是 false。
+            // 修复：解决跨天显示已打卡的问题
             val isCompletedToday = todayRecord?.isCompleted == true
 
-            // 使用 copy 创建一个新的 Habit 对象传给 UI，覆盖数据库中旧的 isCompleted 状态
+            // 使用 copy 创建一个新的 Habit 对象传给 UI
             val displayHabit = habit.copy(isCompleted = isCompletedToday)
 
             HabitUiModel(
@@ -107,7 +104,7 @@ class HabitViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { dao.deleteTag(name = tagName, habitId = habitId) }
     }
 
-    // 【新增：批量更新标签的使用时间】
+    // 批量更新标签的使用时间
     private fun updateTagsTimestamp(habitId: Int, tagsStr: String) {
         if (tagsStr.isBlank()) return
         val timestamp = System.currentTimeMillis()
@@ -131,14 +128,12 @@ class HabitViewModel(application: Application) : AndroidViewModel(application) {
             val newNote = if (note !== null) note else oldRecord?.value
             val newTags = if (tags !== null) tags else oldRecord?.tags ?: ""
 
-            // 【功能：更新标签最后使用时间】
-            // 如果 tags 不为 null，说明是用户在编辑弹窗点击了保存，此时更新这些标签的时间
+            // 更新标签最后使用时间
             if (tags != null) {
                 updateTagsTimestamp(habit.id, newTags)
             }
 
             if (isToday && isCompleted != null) {
-                // 更新 Habit 表状态 (保持数据一致性)
                 dao.updateHabit(habit.copy(isCompleted = newCompleted))
             }
 
@@ -197,7 +192,8 @@ class HabitViewModel(application: Application) : AndroidViewModel(application) {
                     val habitRecords = allRecords.filter { it.habitId == habit.id }
                     val habitTags = allTags[habit.id]?.joinToString("|") { it.name } ?: ""
 
-                    sb.append("[HABIT],${escapeCsv(habit.name)},${dateFormat.format(Date(habit.startDate))},${if (habit.endDate != null) dateFormat.format(Date(habit.endDate)) else ""},${habit.type.name},${escapeCsv(habit.targetValue ?: "")},${escapeCsv(habit.frequency)},${escapeCsv(habitTags)}\n")
+                    // 【修改 1】在导出时增加 habit.colorValue
+                    sb.append("[HABIT],${escapeCsv(habit.name)},${dateFormat.format(Date(habit.startDate))},${if (habit.endDate != null) dateFormat.format(Date(habit.endDate)) else ""},${habit.type.name},${escapeCsv(habit.targetValue ?: "")},${escapeCsv(habit.frequency)},${escapeCsv(habitTags)},${habit.colorValue}\n")
                     sb.append("Date,IsCompleted,Note,CurrentTags\n")
 
                     habitRecords.sortedBy { it.date }.forEach { record ->
@@ -251,11 +247,27 @@ class HabitViewModel(application: Application) : AndroidViewModel(application) {
                             val frequency = parts[5]
                             val habitTagsStr = if (parts.size > 6) parts[6] else ""
 
+                            // 【修改 2】尝试读取颜色值，如果不存在（旧版本备份）则使用默认紫色
+                            val colorValue = if (parts.size > 7) {
+                                parts[7].toLongOrNull() ?: Color(0xFF9C27B0).value.toLong()
+                            } else {
+                                Color(0xFF9C27B0).value.toLong()
+                            }
+
                             val existingHabit = dao.getHabitByName(name)
                             if (existingHabit != null) {
                                 currentHabitId = existingHabit.id
                             } else {
-                                val newHabit = Habit(name = name, colorValue = Color(0xFF9C27B0).value.toLong(), isCompleted = false, type = type, startDate = startDate, endDate = endDate, frequency = frequency, targetValue = if (targetValue.isBlank()) null else targetValue)
+                                val newHabit = Habit(
+                                    name = name,
+                                    colorValue = colorValue,
+                                    isCompleted = false,
+                                    type = type,
+                                    startDate = startDate,
+                                    endDate = endDate,
+                                    frequency = frequency,
+                                    targetValue = if (targetValue.isBlank()) null else targetValue
+                                )
                                 currentHabitId = dao.insertHabit(newHabit).toInt()
                             }
 
