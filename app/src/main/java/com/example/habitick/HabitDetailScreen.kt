@@ -61,12 +61,14 @@ enum class ChartPeriod { Week, Month, Quarter, Year }
 val LightBlueBar = Color(0xFFE3F2FD)
 val ContentBackground = Color(0xFFFAFAFA)
 
+// 【修改 1】在数据类中增加 medianValue
 data class HabitStats(
     val daysSinceStart: Long,
     val totalCheckIns: Int,
     val checkInRate: Int,
     val totalValue: String,
     val avgValue: String,
+    val medianValue: String, // 新增：中位数
     val minValue: String,
     val maxValue: String
 )
@@ -234,30 +236,47 @@ private fun calculateStatsDetail(habit: Habit, records: List<HabitRecord>): Habi
     val totalCheckIns = completedRecords.size
     val rate = if (daysSinceStart == 0L) 0 else ((totalCheckIns.toFloat() / daysSinceStart) * 100).toInt()
 
+    // 【修改 2】重写数值统计逻辑，收集所有数值以计算中位数
+    val validValues = mutableListOf<Float>()
     var totalV = 0f
-    var minV = Float.MAX_VALUE
-    var maxV = Float.MIN_VALUE
-    var countV = 0
 
     records.forEach {
         val v = extractValueDetail(it.value, habit.type) ?: 0f
         if (v > 0) {
+            validValues.add(v)
             totalV += v
-            minV = minOf(minV, v)
-            maxV = maxOf(maxV, v)
-            countV++
         }
     }
 
+    val countV = validValues.size
+    val minV = if (countV > 0) validValues.minOrNull() ?: 0f else 0f
+    val maxV = if (countV > 0) validValues.maxOrNull() ?: 0f else 0f
+
+    // 1. 总计显示
     val displayTotal = if (countV == 0) "-" else if (habit.type == HabitType.TimePoint) "-" else String.format("%.0f", totalV)
 
+    // 2. 平均值计算
     val avg = if (countV == 0) 0f else totalV / countV
-
     val displayAvg = if (countV == 0) "-" else {
         if (habit.type == HabitType.TimePoint) formatMinutesToTimeDetail(avg)
         else String.format("%.2f", avg)
     }
 
+    // 3. 中位数计算
+    validValues.sort()
+    val median = if (countV == 0) 0f else {
+        if (countV % 2 == 1) {
+            validValues[countV / 2]
+        } else {
+            (validValues[countV / 2 - 1] + validValues[countV / 2]) / 2f
+        }
+    }
+    val displayMedian = if (countV == 0) "-" else {
+        if (habit.type == HabitType.TimePoint) formatMinutesToTimeDetail(median)
+        else String.format("%.2f", median)
+    }
+
+    // 4. 最大最小值显示
     val displayMin = if (countV == 0) "-" else {
         if (habit.type == HabitType.TimePoint) formatMinutesToTimeDetail(minV)
         else String.format("%.1f", minV)
@@ -268,7 +287,16 @@ private fun calculateStatsDetail(habit: Habit, records: List<HabitRecord>): Habi
         else String.format("%.1f", maxV)
     }
 
-    return HabitStats(daysSinceStart, totalCheckIns, rate, displayTotal, displayAvg, displayMin, displayMax)
+    return HabitStats(
+        daysSinceStart,
+        totalCheckIns,
+        rate,
+        displayTotal,
+        displayAvg,
+        displayMedian, // 传入中位数
+        displayMin,
+        displayMax
+    )
 }
 
 private fun generateCalendarGridDetail(monthTime: Long): List<Long> {
@@ -542,17 +570,15 @@ fun TagPieChart(records: List<HabitRecord>) {
         Text("标签分布", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 【修改点】增加了高度到 160dp，让滑动区域更舒适
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(160.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 左侧：饼图区域
             Box(
                 modifier = Modifier
-                    .weight(0.8f) // 调整权重，给饼图留 45% 左右空间
+                    .weight(0.8f)
                     .aspectRatio(1f),
                 contentAlignment = Alignment.Center
             ) {
@@ -570,29 +596,25 @@ fun TagPieChart(records: List<HabitRecord>) {
                     }
                 }
             }
-
             Spacer(modifier = Modifier.width(24.dp))
-
-            // 【修改点】右侧：改为 LazyColumn 实现滑动，并调整布局更紧凑
             androidx.compose.foundation.lazy.LazyColumn(
                 modifier = Modifier
-                    .weight(1.2f) // 给列表留更多一点的宽度
+                    .weight(1.2f)
                     .fillMaxHeight(),
-                verticalArrangement = Arrangement.spacedBy(2.dp) // 【修改点】列表间距缩小到 2dp
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 items(tags.size) { index ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(vertical = 2.dp) // 【修改点】单项垂直内边距缩小
+                        modifier = Modifier.padding(vertical = 2.dp)
                     ) {
-                        // 【修改点】圆点缩小到 10dp
                         Box(modifier = Modifier.size(10.dp).background(colors[index], CircleShape))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "${tags[index]} (${counts[index]})",
                             fontSize = 12.sp,
                             color = Color.Gray,
-                            maxLines = 1, // 防止文字过长换行破坏紧凑感
+                            maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
@@ -634,8 +656,8 @@ fun DayEditorSection(
                 viewModel.updateRecord(habit, selectedDate, isCompleted = null, note = note, tags = tags)
                 showEditorDialog = false
             },
-            onAddTag = { viewModel.addTag(habit.id, it) }, // 修复：传递 habitId
-            onDeleteTag = { viewModel.deleteTag(habit.id, it) } // 修复：传递 habitId
+            onAddTag = { viewModel.addTag(habit.id, it) },
+            onDeleteTag = { viewModel.deleteTag(habit.id, it) }
         )
     }
 
@@ -772,8 +794,9 @@ fun StreakListSection(streaks: List<StreakInfo>) {
     }
 }
 
+// 【修改 3】支持点击切换平均/中位数
 @Composable
-fun StatsGridSection(habit: Habit, stats: HabitStats) {
+fun StatsGridSection(habit: Habit, stats: HabitStats, showMedian: Boolean, onToggleMedian: () -> Unit) {
     Column(modifier = Modifier.background(Color.White).padding(16.dp)) {
         Row(Modifier.fillMaxWidth()) {
             StatItem(Modifier.weight(1f), "开始时间", formatDateShortDetail(habit.startDate))
@@ -790,7 +813,12 @@ fun StatsGridSection(habit: Habit, stats: HabitStats) {
         Row(Modifier.fillMaxWidth()) {
             StatItem(Modifier.weight(1f), "打卡", "${stats.totalCheckIns}天/${stats.checkInRate}%")
             if (habit.type != HabitType.Normal) {
-                StatItem(Modifier.weight(1f), "平均", stats.avgValue)
+                // 【修改点】点击切换逻辑
+                StatItem(
+                    modifier = Modifier.weight(1f).clickable { onToggleMedian() },
+                    label = if (showMedian) "中位数" else "平均",
+                    value = if (showMedian) stats.medianValue else stats.avgValue
+                )
                 StatItem(Modifier.weight(1f), "总共", stats.totalValue)
             } else {
                 Spacer(Modifier.weight(2f))
@@ -985,6 +1013,9 @@ fun HabitDetailScreen(
     var currentCalendarMonth: Long by remember { mutableStateOf(getStartOfMonthDetail(System.currentTimeMillis())) }
     var checkInChartPeriod: ChartPeriod by remember { mutableStateOf(ChartPeriod.Month) }
 
+    // 【修改 4】状态变量控制显示平均还是中位数
+    var showMedian by remember { mutableStateOf(false) }
+
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
 
@@ -1041,7 +1072,13 @@ fun HabitDetailScreen(
                 .verticalScroll(rememberScrollState())
                 .background(ContentBackground)
         ) {
-            StatsGridSection(currentHabit, stats)
+            // 【修改 5】传递状态和回调
+            StatsGridSection(
+                habit = currentHabit,
+                stats = stats,
+                showMedian = showMedian,
+                onToggleMedian = { showMedian = !showMedian }
+            )
             Spacer(modifier = Modifier.height(12.dp))
 
             CompactCalendarSection(
@@ -1056,7 +1093,6 @@ fun HabitDetailScreen(
                 onDateClick = { date -> selectedDate = date }
             )
 
-            // 使用通用 RecordEditorDialog 的 DayEditorSection
             DayEditorSection(
                 selectedDate = selectedDate,
                 habit = currentHabit,
@@ -1067,7 +1103,6 @@ fun HabitDetailScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 标签饼图
             TagPieChart(records)
 
             ChartSectionContainer(
@@ -1079,7 +1114,6 @@ fun HabitDetailScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 最佳连续次数
             StreakListSection(allStreaks)
 
             Spacer(modifier = Modifier.height(16.dp))
